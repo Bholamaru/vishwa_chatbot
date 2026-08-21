@@ -111,21 +111,13 @@ urlpatterns = [
 
     path("heat-summary/",HeatSummaryAPIView.as_view(), name="heat-summary"),
 
-    path(
-        "opening-stock-fg/",
-        OpeningStockFGView.as_view(),
-        name="opening-stock-fg"
-    ),
+    path("opening-stock-fg/",OpeningStockFGView.as_view(),name="opening-stock-fg"),
+    path("opening-stock-fg/<int:pk>/",OpeningStockFGView.as_view(),name="opening-stock-fg-detail" ),
+    path("generate-opening-stock-fg-tm/", GenerateOpeningStockFGTMNumber.as_view(),name="generate-opening-stock-fg-tm-no"),
 
     path(
-        "opening-stock-fg/<int:pk>/",
-        OpeningStockFGView.as_view(),
-        name="opening-stock-fg-detail"
+        "jobwork-inward/rm-items/",
+        get_rm_jobwork_items,
+        name="get_rm_jobwork_rm_items"
     ),
-    path(
-        "generate-opening-stock-fg-tm/",
-        GenerateOpeningStockFGTMNumber.as_view(),
-        name="generate-opening-stock-fg-tm-no"
-    ),
-    
 ]

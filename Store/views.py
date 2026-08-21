@@ -4885,3 +4885,127 @@ class GenerateOpeningStockFGTMNumber(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+
+
+
+# new
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import JobworkInwardChallanTable
+
+
+@api_view(["GET"])
+def get_rm_jobwork_items(request):
+
+    try:
+        # Optional search parameter
+        search_item_code = request.GET.get("item_code", "").strip()
+
+        # Base queryset - only RM items
+        queryset = JobworkInwardChallanTable.objects.filter(
+            ItemCode__istartswith="RM"
+        )
+
+        # If item_code is provided, filter particular item
+        if search_item_code:
+            queryset = queryset.filter(
+                ItemCode__istartswith=search_item_code
+            )
+
+        items = queryset.values(
+            "ItemCode",
+            "HeatNo",
+            "GRNQty"
+        )
+
+        result = {}
+
+        for item in items:
+
+            full_item_code = item["ItemCode"] or ""
+
+            # Example:
+            # RMRM1002 | RMBPA00209 | CAP OIL LOCK
+
+            parts = [
+                part.strip()
+                for part in full_item_code.split("|")
+            ]
+
+            item_code = parts[0] if len(parts) > 0 else ""
+            item_no = parts[1] if len(parts) > 1 else ""
+            description = parts[2] if len(parts) > 2 else ""
+
+            try:
+                grn_qty = float(item["GRNQty"] or 0)
+            except (ValueError, TypeError):
+                grn_qty = 0
+
+            if item_code not in result:
+
+                result[item_code] = {
+                    "item_code": item_code,
+                    "item_no": item_no,
+                    "description": description,
+                    "stock": 0,
+                    "variants": []
+                }
+
+            # Total stock
+            result[item_code]["stock"] += grn_qty
+
+            heat_no = item["HeatNo"] or ""
+
+            # Same HeatNo -> combine GRNQty
+            existing_variant = next(
+                (
+                    variant
+                    for variant in result[item_code]["variants"]
+                    if variant["HeatNo"] == heat_no
+                ),
+                None
+            )
+
+            if existing_variant:
+                existing_variant["GRNQty"] += grn_qty
+            else:
+                result[item_code]["variants"].append({
+                    "HeatNo": heat_no,
+                    "GRNQty": grn_qty
+                })
+
+        # Convert whole numbers from 200.0 -> 200
+        data = []
+
+        for item in result.values():
+
+            if item["stock"].is_integer():
+                item["stock"] = int(item["stock"])
+
+            for variant in item["variants"]:
+                if variant["GRNQty"].is_integer():
+                    variant["GRNQty"] = int(
+                        variant["GRNQty"]
+                    )
+
+            data.append(item)
+
+        return Response({
+            "status": True,
+            "count": len(data),
+            "data": data
+        })
+
+    except Exception as e:
+
+        return Response(
+            {
+                "status": False,
+                "message": str(e)
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
