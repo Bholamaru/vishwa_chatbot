@@ -5011,39 +5011,105 @@ def rm_jobwork_item(request):
         )
 
 
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import (
+    JobworkInwardChallanTable,
+    MaterialChallanTable
+)
+
 
 @api_view(["GET"])
 def get_rm_jobwork_items(request):
 
     try:
-        # Optional search parameter
-        search_item_code = request.GET.get("item_code", "").strip()
+        # --------------------------------------------------
+        # Optional search
+        # --------------------------------------------------
+        search_item_code = request.GET.get(
+            "item_code", ""
+        ).strip()
 
-        # Base queryset - only RM items
+        # --------------------------------------------------
+        # JOBWORK / GRN DATA
+        # --------------------------------------------------
         queryset = JobworkInwardChallanTable.objects.filter(
             ItemCode__istartswith="RM"
         )
 
-        # If item_code is provided, filter particular item
+        # Search particular RM item
         if search_item_code:
             queryset = queryset.filter(
-                ItemCode__istartswith=search_item_code
+                ItemCode__istartswith=search_item_code + " |"
             )
 
-        items = queryset.values(
+        grn_items = queryset.values(
             "ItemCode",
             "HeatNo",
             "GRNQty"
         )
 
+        # --------------------------------------------------
+        # MATERIAL ISSUE / SHOP FLOOR DATA
+        # --------------------------------------------------
+        material_items = MaterialChallanTable.objects.filter(
+            MaterialChallanDetail__Item__istartswith="RM"
+        ).values(
+            "MaterialChallanDetail__Item",
+            "Qty"
+        )
+
+        # If searching a particular item
+        if search_item_code:
+            material_items = material_items.filter(
+                MaterialChallanDetail__Item__istartswith=
+                search_item_code + " -"
+            )
+
+        # --------------------------------------------------
+        # Calculate ShopFloor quantity
+        # --------------------------------------------------
+        shopfloor = {}
+
+        for item in material_items:
+
+            full_item = (
+                item["MaterialChallanDetail__Item"] or ""
+            )
+
+            # Example:
+            # RM1006 - RMCoil - CoilRaw
+
+            parts = [
+                part.strip()
+                for part in full_item.split("-")
+            ]
+
+            item_code = parts[0] if parts else ""
+
+            try:
+                qty = float(item["Qty"] or 0)
+            except (ValueError, TypeError):
+                qty = 0
+
+            if item_code not in shopfloor:
+                shopfloor[item_code] = 0
+
+            shopfloor[item_code] += qty
+
+        # --------------------------------------------------
+        # Prepare final result
+        # --------------------------------------------------
         result = {}
 
-        for item in items:
+        for item in grn_items:
 
             full_item_code = item["ItemCode"] or ""
 
             # Example:
-            # RMRM1002 | RMBPA00209 | CAP OIL LOCK
+            # RM1006 | RMCoil | CoilRaw
 
             parts = [
                 part.strip()
@@ -5059,22 +5125,33 @@ def get_rm_jobwork_items(request):
             except (ValueError, TypeError):
                 grn_qty = 0
 
+            # Create item
             if item_code not in result:
 
                 result[item_code] = {
                     "item_code": item_code,
                     "item_no": item_no,
                     "description": description,
+
+                    # GRN total stock
                     "stock": 0,
+
+                    # Material Issue total
+                    "ShopFloor": shopfloor.get(
+                        item_code, 0
+                    ),
+
                     "variants": []
                 }
 
-            # Total stock
+            # Total GRN stock
             result[item_code]["stock"] += grn_qty
 
+            # --------------------------------------------------
+            # HeatNo wise GRN
+            # --------------------------------------------------
             heat_no = item["HeatNo"] or ""
 
-            # Same HeatNo -> combine GRNQty
             existing_variant = next(
                 (
                     variant
@@ -5085,14 +5162,19 @@ def get_rm_jobwork_items(request):
             )
 
             if existing_variant:
+
                 existing_variant["GRNQty"] += grn_qty
+
             else:
+
                 result[item_code]["variants"].append({
                     "HeatNo": heat_no,
                     "GRNQty": grn_qty
                 })
 
-        # Convert whole numbers from 200.0 -> 200
+        # --------------------------------------------------
+        # Format numbers
+        # --------------------------------------------------
         data = []
 
         for item in result.values():
@@ -5100,7 +5182,13 @@ def get_rm_jobwork_items(request):
             if item["stock"].is_integer():
                 item["stock"] = int(item["stock"])
 
+            if item["ShopFloor"].is_integer():
+                item["ShopFloor"] = int(
+                    item["ShopFloor"]
+                )
+
             for variant in item["variants"]:
+
                 if variant["GRNQty"].is_integer():
                     variant["GRNQty"] = int(
                         variant["GRNQty"]
