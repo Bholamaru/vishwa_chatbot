@@ -115,9 +115,12 @@ urlpatterns = [
     path("opening-stock-fg/<int:pk>/",OpeningStockFGView.as_view(),name="opening-stock-fg-detail" ),
     path("generate-opening-stock-fg-tm/", GenerateOpeningStockFGTMNumber.as_view(),name="generate-opening-stock-fg-tm-no"),
 
+
+# new for sell
     path(
         "jobwork-inward/rm-items/",
         get_rm_jobwork_items,
         name="get_rm_jobwork_rm_items"
     ),
+    path('jobworkinward/rm/',rm_jobwork_item,name="get-rm-jobworkinward-for-materialissune-challan"),
 ]
