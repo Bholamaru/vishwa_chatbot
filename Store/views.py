@@ -5453,6 +5453,12 @@ def get_rm_jobwork_items(request):
             # --------------------------------------------------
             for variant in item["variants"]:
 
+                variant["total"] = (
+                        variant["GRNQty"]
+                        + variant["bar"]
+                        + variant["wire_rod"]
+                    )
+
                 if variant["GRNQty"].is_integer():
                     variant["GRNQty"] = int(
                         variant["GRNQty"]
@@ -5478,6 +5484,15 @@ def get_rm_jobwork_items(request):
                 else:
                     variant["wire_rod"] = round(
                         variant["wire_rod"], 2
+                    )
+
+                if variant["total"].is_integer():
+                    variant["total"] = int(
+                        variant["total"]
+                    )
+                else:
+                    variant["total"] = round(
+                        variant["total"], 2
                     )
 
             data.append(item)
