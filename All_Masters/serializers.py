@@ -871,6 +871,8 @@ class BOMItemSerializer(serializers.ModelSerializer):
             'ProdQty',
             'AssProd',
             'WipWt',
+            'bar',
+            'wire_rod',
             'WipRate',
             'PieceRate',
             'OPRate',

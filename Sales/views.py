@@ -1466,8 +1466,8 @@ def generate_salesreturn_pdf(request, pk):
 
         # Company / party details – populate from your Party/Settings model
         # Replace the values below with actual lookups as needed.
-        "company_gstin": "27AAMFS1149Q1ZH",
-        "company_pan":   "AAMFS1149Q",
+        "company_gstin": "27AGLPC8037E1ZH",
+        "company_pan":   "AGLPC8037E",
         "party_gstin":   getattr(sales_return, 'party_gstin', ''),
         "party_address": getattr(sales_return, 'party_address', ''),
         "party_state_code": getattr(sales_return, 'party_state_code', '27'),

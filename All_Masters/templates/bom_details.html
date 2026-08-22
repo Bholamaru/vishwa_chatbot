@@ -55,7 +55,7 @@
 
 </head>
 <body>
-    <h1> AYUSH ENTRPRISES</h1>
+    <h1> Vishwa Samrudhi Industries</h1>
     <h3>Routing For {{ item.part_no}}  | {{ item.Part_Code }} | {{ item.Name_Description }} (F)</h3>
 
     <table>
@@ -78,6 +78,8 @@
                 <th>Prod Qty</th>
                 <th>WIP wt</th>
                 <th>WIP rate</th>
+                <th>Wire Rod</th>
+                <th>Bar</th>
                 <th>Piece Rate</th>
                 <th>Op Rate</th>
                 <th>Cycle Time</th>
@@ -103,6 +105,8 @@
                 <td>{{ bom.ProdQty }}</td>
                 <td>{{ bom.WipWt }}</td>
                 <td>{{ bom.WipRate }}</td>
+                <td>{{bom.wire_rod}}</td>
+                <td>{{bom.bar}}</td>
                 <td>{{ bom.PieceRate }}</td>
                 <td>{{ bom.OPRate }}</td>
                 <td></td>

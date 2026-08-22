@@ -652,6 +652,8 @@ class JobworkInwardChallanTable(models.Model):
     CustHeatNo = models.CharField(max_length=255, blank=True, null=True)
     ParticularNatureOfProcess = models.CharField(max_length=255, blank=True, null=True)
     FGPartCode = models.CharField(max_length=255, blank=True, null=True)
+    wire_rod = models.DecimalField(max_digits=20,decimal_places=2,blank=True,null=True)
+    bar = models.DecimalField(max_digits=20,decimal_places=2,blank=True,null=True)
 
 
     def __str__(self):
