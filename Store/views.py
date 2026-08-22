@@ -5350,7 +5350,7 @@ def get_rm_jobwork_items(request):
 
                     # Total GRN stock
                     "stock": 0,
-
+                    "total": 0,
                     # Total ShopFloor
                     "ShopFloor": shopfloor.get(
                         item_code, 0
@@ -5408,6 +5408,9 @@ def get_rm_jobwork_items(request):
         data = []
 
         for item in result.values():
+
+            item["total"] = (item["stock"]+ item["bar"]+ item["wire_rod"])
+
 
             # Stock
             if item["stock"].is_integer():
