@@ -626,7 +626,7 @@ class InwardChallanSerializer(serializers.ModelSerializer):
 
         return instance
     
-"""
+
 
 # Subcon GRN:- JobWork Inward-Challan
 from .models import JobworkInwardChallan, JobworkInwardChallanTable
@@ -664,225 +664,225 @@ class JobworkInwardChallanSerializer(serializers.ModelSerializer):
                 JobworkInwardChallanTable.objects.create(JobworkInwardChallanDetail=instance, **item_data)
 
         return instance
-"""
+
 
 
 # new for Vishwa.s.i
 
-from decimal import Decimal, InvalidOperation
-from rest_framework import serializers
+# from decimal import Decimal, InvalidOperation
+# from rest_framework import serializers
 
-from .models import (
-    JobworkInwardChallan,
-    JobworkInwardChallanTable,
-)
-
-
-class JobworkInwardChallanTableSerializer(serializers.ModelSerializer):
-
-    class Meta:
-        model = JobworkInwardChallanTable
-        fields = [
-            'ItemCode',
-            'Operation',
-            'ChallanQty',
-            'GRNQty',
-            'MaterialRate',
-            'HeatNo',
-            'CustHeatNo',
-            'ParticularNatureOfProcess',
-            'FGPartCode',
-            'wire_rod',
-            'bar',
-        ]
-
-    from decimal import Decimal, InvalidOperation
-    def calculate_bom_percentage(self, validated_data):
-
-        item_code = validated_data.get('ItemCode')
-        grn_qty = validated_data.get('GRNQty')
-
-        if not item_code or grn_qty is None:
-            return validated_data
-
-        # -------------------------------------------------
-        # Example:
-        # RM1006 | RMCoil | CoilRaw
-        #
-        # Extract:
-        # RM1006
-        # -------------------------------------------------
-        bom_part_code = item_code.split('|')[0].strip()
-
-        try:
-            original_grn_qty = Decimal(str(grn_qty))
-        except (InvalidOperation, TypeError, ValueError):
-            return validated_data
-
-        # -------------------------------------------------
-        # Find RM BOM
-        # -------------------------------------------------
-        bom_item = (
-            BOMItem.objects
-            .filter(
-                BOMPartType='RM',
-                BomPartCode=bom_part_code
-            )
-            .first()
-        )
-
-        if not bom_item:
-            return validated_data
-
-        # Keep original quantity for calculation
-        remaining_qty = original_grn_qty
-
-        # -------------------------------------------------
-        # BAR
-        # -------------------------------------------------
-        if bom_item.bar is not None:
-
-            bar_percentage = Decimal(str(bom_item.bar))
-
-            bar_value = (
-                original_grn_qty * bar_percentage
-            ) / Decimal('100')
-
-            bar_value = bar_value.quantize(
-                Decimal('0.01')
-            )
-
-            validated_data['bar'] = bar_value
-
-            # SUBTRACT BAR
-            remaining_qty -= bar_value
-
-        # -------------------------------------------------
-        # WIRE ROD
-        # -------------------------------------------------
-        if bom_item.wire_rod is not None:
-
-            wire_rod_percentage = Decimal(
-                str(bom_item.wire_rod)
-            )
-
-            wire_rod_value = (
-                original_grn_qty * wire_rod_percentage
-            ) / Decimal('100')
-
-            wire_rod_value = wire_rod_value.quantize(
-                Decimal('0.01')
-            )
-
-            validated_data['wire_rod'] = wire_rod_value
-
-            # SUBTRACT WIRE ROD
-            remaining_qty -= wire_rod_value
-
-        # -------------------------------------------------
-        # SAVE REMAINING GRN QTY
-        # -------------------------------------------------
-        validated_data['GRNQty'] = str(
-            remaining_qty.quantize(Decimal('0.01'))
-        )
-
-        return validated_data
-
-    def create(self, validated_data):
-        # Automatically calculate bar and wire_rod
-        validated_data = self.calculate_bom_percentage(
-            validated_data
-        )
-
-        return JobworkInwardChallanTable.objects.create(
-            **validated_data
-        )
-
-    def update(self, instance, validated_data):
-        # Automatically recalculate when ItemCode/GRNQty changes
-        validated_data = self.calculate_bom_percentage(
-            validated_data
-        )
-
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-
-        instance.save()
-
-        return instance
+# from .models import (
+#     JobworkInwardChallan,
+#     JobworkInwardChallanTable,
+# )
 
 
-class JobworkInwardChallanSerializer(serializers.ModelSerializer):
+# class JobworkInwardChallanTableSerializer(serializers.ModelSerializer):
 
-    JobworkInwardChallanTable = JobworkInwardChallanTableSerializer(
-        many=True
-    )
+#     class Meta:
+#         model = JobworkInwardChallanTable
+#         fields = [
+#             'ItemCode',
+#             'Operation',
+#             'ChallanQty',
+#             'GRNQty',
+#             'MaterialRate',
+#             'HeatNo',
+#             'CustHeatNo',
+#             'ParticularNatureOfProcess',
+#             'FGPartCode',
+#             'wire_rod',
+#             'bar',
+#         ]
 
-    class Meta:
-        model = JobworkInwardChallan
-        fields = '__all__'
+#     from decimal import Decimal, InvalidOperation
+#     def calculate_bom_percentage(self, validated_data):
 
-    def create(self, validated_data):
+#         item_code = validated_data.get('ItemCode')
+#         grn_qty = validated_data.get('GRNQty')
 
-        table_data = validated_data.pop(
-            'JobworkInwardChallanTable'
-        )
+#         if not item_code or grn_qty is None:
+#             return validated_data
 
-        challan = JobworkInwardChallan.objects.create(
-            **validated_data
-        )
+#         # -------------------------------------------------
+#         # Example:
+#         # RM1006 | RMCoil | CoilRaw
+#         #
+#         # Extract:
+#         # RM1006
+#         # -------------------------------------------------
+#         bom_part_code = item_code.split('|')[0].strip()
 
-        for item_data in table_data:
+#         try:
+#             original_grn_qty = Decimal(str(grn_qty))
+#         except (InvalidOperation, TypeError, ValueError):
+#             return validated_data
 
-            # The nested serializer's create() is not automatically
-            # called when manually creating nested objects, so call
-            # the calculation here too.
+#         # -------------------------------------------------
+#         # Find RM BOM
+#         # -------------------------------------------------
+#         bom_item = (
+#             BOMItem.objects
+#             .filter(
+#                 BOMPartType='RM',
+#                 BomPartCode=bom_part_code
+#             )
+#             .first()
+#         )
 
-            item_serializer = JobworkInwardChallanTableSerializer()
+#         if not bom_item:
+#             return validated_data
 
-            item_data = item_serializer.calculate_bom_percentage(
-                item_data
-            )
+#         # Keep original quantity for calculation
+#         remaining_qty = original_grn_qty
 
-            JobworkInwardChallanTable.objects.create(
-                JobworkInwardChallanDetail=challan,
-                **item_data
-            )
+#         # -------------------------------------------------
+#         # BAR
+#         # -------------------------------------------------
+#         if bom_item.bar is not None:
 
-        return challan
+#             bar_percentage = Decimal(str(bom_item.bar))
 
-    def update(self, instance, validated_data):
+#             bar_value = (
+#                 original_grn_qty * bar_percentage
+#             ) / Decimal('100')
 
-        table_data = validated_data.pop(
-            'JobworkInwardChallanTable',
-            None
-        )
+#             bar_value = bar_value.quantize(
+#                 Decimal('0.01')
+#             )
 
-        # Update main challan
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+#             validated_data['bar'] = bar_value
 
-        instance.save()
+#             # SUBTRACT BAR
+#             remaining_qty -= bar_value
 
-        # Update nested table
-        if table_data is not None:
+#         # -------------------------------------------------
+#         # WIRE ROD
+#         # -------------------------------------------------
+#         if bom_item.wire_rod is not None:
 
-            instance.JobworkInwardChallanTable.all().delete()
+#             wire_rod_percentage = Decimal(
+#                 str(bom_item.wire_rod)
+#             )
 
-            item_serializer = JobworkInwardChallanTableSerializer()
+#             wire_rod_value = (
+#                 original_grn_qty * wire_rod_percentage
+#             ) / Decimal('100')
 
-            for item_data in table_data:
+#             wire_rod_value = wire_rod_value.quantize(
+#                 Decimal('0.01')
+#             )
 
-                item_data = item_serializer.calculate_bom_percentage(
-                    item_data
-                )
+#             validated_data['wire_rod'] = wire_rod_value
 
-                JobworkInwardChallanTable.objects.create(
-                    JobworkInwardChallanDetail=instance,
-                    **item_data
-                )
+#             # SUBTRACT WIRE ROD
+#             remaining_qty -= wire_rod_value
 
-        return instance
+#         # -------------------------------------------------
+#         # SAVE REMAINING GRN QTY
+#         # -------------------------------------------------
+#         validated_data['GRNQty'] = str(
+#             remaining_qty.quantize(Decimal('0.01'))
+#         )
+
+#         return validated_data
+
+#     def create(self, validated_data):
+#         # Automatically calculate bar and wire_rod
+#         validated_data = self.calculate_bom_percentage(
+#             validated_data
+#         )
+
+#         return JobworkInwardChallanTable.objects.create(
+#             **validated_data
+#         )
+
+#     def update(self, instance, validated_data):
+#         # Automatically recalculate when ItemCode/GRNQty changes
+#         validated_data = self.calculate_bom_percentage(
+#             validated_data
+#         )
+
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
+
+#         instance.save()
+
+#         return instance
+
+
+# class JobworkInwardChallanSerializer(serializers.ModelSerializer):
+
+#     JobworkInwardChallanTable = JobworkInwardChallanTableSerializer(
+#         many=True
+#     )
+
+#     class Meta:
+#         model = JobworkInwardChallan
+#         fields = '__all__'
+
+#     def create(self, validated_data):
+
+#         table_data = validated_data.pop(
+#             'JobworkInwardChallanTable'
+#         )
+
+#         challan = JobworkInwardChallan.objects.create(
+#             **validated_data
+#         )
+
+#         for item_data in table_data:
+
+#             # The nested serializer's create() is not automatically
+#             # called when manually creating nested objects, so call
+#             # the calculation here too.
+
+#             item_serializer = JobworkInwardChallanTableSerializer()
+
+#             item_data = item_serializer.calculate_bom_percentage(
+#                 item_data
+#             )
+
+#             JobworkInwardChallanTable.objects.create(
+#                 JobworkInwardChallanDetail=challan,
+#                 **item_data
+#             )
+
+#         return challan
+
+#     def update(self, instance, validated_data):
+
+#         table_data = validated_data.pop(
+#             'JobworkInwardChallanTable',
+#             None
+#         )
+
+#         # Update main challan
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
+
+#         instance.save()
+
+#         # Update nested table
+#         if table_data is not None:
+
+#             instance.JobworkInwardChallanTable.all().delete()
+
+#             item_serializer = JobworkInwardChallanTableSerializer()
+
+#             for item_data in table_data:
+
+#                 item_data = item_serializer.calculate_bom_percentage(
+#                     item_data
+#                 )
+
+#                 JobworkInwardChallanTable.objects.create(
+#                     JobworkInwardChallanDetail=instance,
+#                     **item_data
+#                 )
+
+#         return instance
 
 
 

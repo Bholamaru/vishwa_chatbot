@@ -135,6 +135,196 @@ class ProductionEntrySerializer(serializers.ModelSerializer):
         model = ProductionEntry
         fields = "__all__"
 
+
+    def calculate_bar_wire_rod(self, production):
+        """
+        Calculate BAR and WIRE_ROD percentage from RM BOM.
+
+        Example:
+
+        raw_material = RM1006
+        prod_qty = 10
+
+        BOM:
+            BomPartCode = RM1006
+            BOMPartType = RM
+            bar = 5%
+            wire_rod = 5%
+
+        Result:
+            bar_value = 0.50
+            wier_rod_value = 0.50
+            qty = 9.00
+        """
+
+        raw_material = (
+            production.raw_material or ""
+        ).strip()
+
+        if not raw_material:
+            return
+
+        # --------------------------------------------------
+        # Extract RM code
+        #
+        # Example:
+        # RM1006
+        #
+        # If future value is:
+        # RM1006 | RMCoil | CoilRaw
+        #
+        # it will still extract RM1006
+        # --------------------------------------------------
+        rm_code = raw_material.split("|")[0].strip()
+
+        # --------------------------------------------------
+        # Production quantity
+        # --------------------------------------------------
+        try:
+            prod_qty = Decimal(
+                str(production.prod_qty or 0)
+            )
+        except (InvalidOperation, TypeError, ValueError):
+            prod_qty = Decimal("0")
+
+        if prod_qty <= 0:
+            production.bar_value = Decimal("0")
+            production.wier_rod_value = Decimal("0")
+            production.qty = Decimal("0")
+
+            production.save(
+                update_fields=[
+                    "bar_value",
+                    "wier_rod_value",
+                    "qty"
+                ]
+            )
+
+            return
+
+        # --------------------------------------------------
+        # Find RM BOM
+        # --------------------------------------------------
+        bom_item = (
+            BOMItem.objects
+            .filter(
+                BOMPartType__iexact="RM",
+                BomPartCode__iexact=rm_code
+            )
+            .first()
+        )
+
+        if not bom_item:
+
+            print(
+                f"⚠️ RM BOM not found for: {rm_code}"
+            )
+
+            production.bar_value = Decimal("0")
+            production.wier_rod_value = Decimal("0")
+            production.qty = prod_qty
+
+            production.save(
+                update_fields=[
+                    "bar_value",
+                    "wier_rod_value",
+                    "qty"
+                ]
+            )
+
+            return
+
+        # --------------------------------------------------
+        # BAR %
+        # --------------------------------------------------
+        try:
+            bar_percentage = Decimal(
+                str(bom_item.bar or 0)
+            )
+        except (InvalidOperation, TypeError, ValueError):
+            bar_percentage = Decimal("0")
+
+        # --------------------------------------------------
+        # WIRE ROD %
+        # --------------------------------------------------
+        try:
+            wire_rod_percentage = Decimal(
+                str(bom_item.wire_rod or 0)
+            )
+        except (InvalidOperation, TypeError, ValueError):
+            wire_rod_percentage = Decimal("0")
+
+        # --------------------------------------------------
+        # Calculate values
+        # --------------------------------------------------
+        bar_value = (
+            prod_qty * bar_percentage
+        ) / Decimal("100")
+
+        wire_rod_value = (
+            prod_qty * wire_rod_percentage
+        ) / Decimal("100")
+
+        # Truncate to 2 decimal places
+        bar_value = bar_value.quantize(
+            Decimal("0.01"),
+            rounding=ROUND_DOWN
+        )
+
+        wire_rod_value = wire_rod_value.quantize(
+            Decimal("0.01"),
+            rounding=ROUND_DOWN
+        )
+
+        # --------------------------------------------------
+        # Remaining production quantity
+        # --------------------------------------------------
+        remaining_qty = (
+            prod_qty
+            - bar_value
+            - wire_rod_value
+        )
+
+        if remaining_qty < 0:
+            remaining_qty = Decimal("0")
+
+        remaining_qty = remaining_qty.quantize(
+            Decimal("0.01"),
+            rounding=ROUND_DOWN
+        )
+
+        # --------------------------------------------------
+        # Save values
+        # --------------------------------------------------
+        production.bar_value = bar_value
+        production.wier_rod_value = wire_rod_value
+        production.qty = remaining_qty
+
+        production.save(
+            update_fields=[
+                "bar_value",
+                "wier_rod_value",
+                "qty"
+            ]
+        )
+
+        print(
+            f"""
+            ✅ Production BOM calculation
+
+            RM Code       : {rm_code}
+            Production Qty: {prod_qty}
+
+            BAR %         : {bar_percentage}
+            BAR Value     : {bar_value}
+
+            Wire Rod %    : {wire_rod_percentage}
+            Wire Rod Value : {wire_rod_value}
+
+            Remaining Qty : {remaining_qty}
+            """
+        )
+
     def extract_bom_qty(self, parent_operation):
         """Extract BOMQty numeric value from string like: 'ScracpQty: N/A | BOMQty: 0.987'"""
         text = parent_operation or ""
@@ -197,6 +387,8 @@ class ProductionEntrySerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         production = ProductionEntry.objects.create(**validated_data)
+
+        self.calculate_bar_wire_rod(production)
 
         # Store original ParentOperation before any updates
         original_parent_operation = validated_data.get('ParentOperation', production.ParentOperation)
@@ -306,325 +498,6 @@ class ProductionEntrySerializer(serializers.ModelSerializer):
             remaining_new -= to_subtract
 
         return instance
-
-
-
-
-
-"""
-
-
-
-import re
-from decimal import Decimal, ROUND_DOWN
-from rest_framework import serializers
-class OOPurchaseSerializer(serializers.ModelSerializer):
-    MachineIdleTime_Detail_Enter = MachineIdleTime_Detail_EnterSerializer(many=True)
-
-    class Meta:
-        model = ProductionEntry
-        fields = '__all__'
-
-    def get_parent_op_number(self, parent_operation):
-            
-        text = str(parent_operation or "")
-        match = re.search(r"OP\s*:\s*(\d+)", text)
-        return match.group(1) if match else None
-
-    
-    def subtract_from_parent_operation(self, production_entry):
-        parent_op_no = self.get_parent_op_number(production_entry.ParentOperation)
-        if not parent_op_no:
-            print(" No parent OP found, skipping subtraction.")
-            return
-
-        current_op_no = str(production_entry.operation).split("|")[0].strip()
-
-    # Prevent subtracting if current = parent (safety)
-        if current_op_no == parent_op_no:
-            return
-
-        item = production_entry.item
-        lot_no_first = str(production_entry.lot_no).split("|")[0].strip()
-        
-        prod_qty = Decimal(production_entry.prod_qty or 0)
-
-    # Fetch latest parent entry
-        parent_entry = ProductionEntry.objects.filter(
-          item=item,
-           lot_no__startswith=lot_no_first,
-           operation__startswith=parent_op_no
-           ).order_by("-id").first()
-
-        if not parent_entry:
-            print(" No parent operation entry found.")
-            return
-
-        parent_old_qty = Decimal(parent_entry.prod_qty or 0)
-        parent_new_qty = parent_old_qty - prod_qty
-        if parent_new_qty < 0:
-            parent_new_qty = Decimal("0")
-
-        parent_entry.prod_qty = str(parent_new_qty)
-        parent_entry.save(update_fields=["prod_qty"])
-
-        print(f"🔄 Updated Parent OP {parent_op_no}: {parent_old_qty} → {parent_new_qty}")
-
-
-
-
-    # -------------------------------------------------------------
-    # Helper: Extract BOMQty numeric value from ParentOperation string
-    # -------------------------------------------------------------
-    def extract_bom_qty(self, parent_operation):
-        text = str(parent_operation or "")
-        print(f"[EXTRACT_BOM] Input text: '{text}'", flush=True)
-        match = re.search(r"BOMQty:\s*([0-9]+(?:\.[0-9]+)?)", text, re.IGNORECASE)
-        if not match:
-            print(f"⚠️ Could not extract BOMQty from: '{text}', defaulting to 1", flush=True)
-            return Decimal("1")
-        try:
-            bom_qty = Decimal(match.group(1))
-            print(f"✅ Extracted BOMQty: {bom_qty}", flush=True)
-            return bom_qty
-        except Exception as e:
-            print(f"⚠️ Error extracting BOMQty: {e}, using default 1", flush=True)
-            return Decimal("1")
-
-    # -------------------------------------------------------------
-    # Compute effective qty (depends on operation type)
-    # -------------------------------------------------------------
-    def compute_effective_qty(self, operation, prod_qty, parent_operation):
-        print(f"[COMPUTE_QTY] START - operation={operation}, prod_qty={prod_qty}", flush=True)
-        
-        prod_qty = Decimal(str(prod_qty or 0))
-        operation_str = str(operation or "").strip().replace(" ", "").replace("|", "")
-        bom_qty = self.extract_bom_qty(parent_operation)
-
-        print(f"DEBUG: operation_str={operation_str}, bom_qty={bom_qty}, prod_qty={prod_qty}", flush=True)
-
-        # ✅ If operation starts with '10' → multiply prod_qty * BOMQty
-        if operation_str.startswith("10"):
-            effective = (prod_qty * bom_qty).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-            print(f"✅ Operation starts with 10 → {prod_qty} × {bom_qty} = {effective}", flush=True)
-            return effective
-
-        # Otherwise → just prod_qty
-        print(f"⚪ Operation not starting with 10 → Use prod_qty only = {prod_qty}", flush=True)
-        return prod_qty
-
-    # -------------------------------------------------------------
-    # Update ParentOperation when operation starts with "10"
-    # -------------------------------------------------------------
-    def update_parent_operation_for_operation_10(self, production, original_parent_operation=None):
-        print(f"[UPDATE_PARENT_OP] START - operation={production.operation}", flush=True)
-        operation = str(production.operation or "").strip().replace(" ", "").replace("|", "")
-        if not operation.startswith("10"):
-            print(f"[UPDATE_PARENT_OP] Operation doesn't start with 10, skipping", flush=True)
-            return
-
-        prod_qty = Decimal(production.prod_qty or 0)
-        parent_op_source = original_parent_operation if original_parent_operation is not None else production.ParentOperation
-        original_bom_qty = self.extract_bom_qty(parent_op_source)
-
-        new_bom_qty = (original_bom_qty * prod_qty) - prod_qty
-        if new_bom_qty < 0:
-            new_bom_qty = Decimal("0")
-
-        new_bom_qty_str = str(new_bom_qty.quantize(Decimal("0.001")))
-        production.ParentOperation = f"ScracpQty: N/A | BOMQty: {new_bom_qty_str}"
-        production.save(update_fields=["ParentOperation"])
-
-        print(f"📝 Updated ParentOperation for operation 10: BOMQty {original_bom_qty} → {new_bom_qty_str}", flush=True)
-
-    # -------------------------------------------------------------
-    # CREATE
-    # -------------------------------------------------------------
-    def create(self, validated_data):
-        print("\n" + "="*80, flush=True)
-        print("🚀 OOPurchaseSerializer.create() CALLED", flush=True)
-        print("="*80 + "\n", flush=True)
-        
-        # Extract nested data
-        MachineIdleTime_Detail_Enter_data = validated_data.pop('MachineIdleTime_Detail_Enter', [])
-        
-        # Store original ParentOperation before creating the object
-        original_parent_operation = validated_data.get('ParentOperation', None)
-        
-        # Create production entry
-        production_entry = ProductionEntry.objects.create(**validated_data)
-       
-        self.subtract_from_parent_operation(production_entry)
-
-        print(f"✅ Created ProductionEntry: ID={production_entry.id}", flush=True)
-        
-        # Create related MachineIdleTime entries
-        for MachineIdleTime_data in MachineIdleTime_Detail_Enter_data:
-            MachineIdleTime_Detail = MachineIdleTime.objects.create(**MachineIdleTime_data)
-            production_entry.MachineIdleTime_Detail_Enter.add(MachineIdleTime_Detail)
-        
-        # Update ParentOperation if operation starts with "10"
-        self.update_parent_operation_for_operation_10(production_entry, original_parent_operation=original_parent_operation)
-
-        # Extract heat number
-        lot_no_value = (production_entry.lot_no or "").strip()
-        heat_no = lot_no_value.split("|")[0].strip() if "|" in lot_no_value else lot_no_value
-        print(f"🔍 Extracted HeatNo: {heat_no}", flush=True)
-
-        # Compute effective quantity based on operation type
-        operation = (production_entry.operation or "").strip()
-        prod_qty = Decimal(production_entry.prod_qty or 0)
-
-        qty_to_subtract = self.compute_effective_qty(operation, prod_qty, original_parent_operation)
-        
-        # print(f"📊 Quantity to subtract: {qty_to_subtract}", flush=True)
-
-        # if qty_to_subtract <= 0:
-        #     print(f"⚠️ qty_to_subtract <= 0, skipping FIFO subtraction", flush=True)
-        #     return production_entry
-        
-        # Subtract only when operation starts with 10
-        operation_clean = str(operation).replace(" ", "").split("|")[0]
-
-        if not operation_clean.startswith("10"):
-            print("⏭️ Skipping FIFO subtraction — operation is not starting with 10", flush=True)
-            return production_entry
-
-        if qty_to_subtract <= 0:
-            print(f"⚠️ qty_to_subtract <= 0, skipping FIFO subtraction", flush=True)
-            return production_entry
-
-# FIFO subtraction logic continues...
-
-        
-
-         
-
-
-
-        # FIFO subtraction from MaterialChallanTable
-        print(f"🔄 Starting FIFO subtraction for HeatNo: {heat_no}", flush=True)
-        remaining = Decimal(qty_to_subtract)
-        for item in MaterialChallanTable.objects.filter(HeatNo__iexact=heat_no).order_by('id'):
-            if remaining <= 0:
-                break
-            current_qty = Decimal(item.Qty or 0)
-            if current_qty <= 0:
-                continue
-            to_subtract = min(current_qty, remaining)
-            item.Qty = str(current_qty - to_subtract)
-            item.save(update_fields=["Qty"])
-            print(f"✓ ChallanTable {item.id} FIFO subtract: {current_qty} → {item.Qty} (−{to_subtract}, HeatNo={heat_no})", flush=True)
-            remaining -= to_subtract
-
-        print(f"✅ OOPurchaseSerializer.create() COMPLETED\n", flush=True)
-        
-
-
-        return production_entry
-
-    # -------------------------------------------------------------
-    # UPDATE
-    # -------------------------------------------------------------
-    def update(self, instance, validated_data):
-        print("\n" + "="*80, flush=True)
-        print("🔄 OOPurchaseSerializer.update() CALLED", flush=True)
-        print("="*80 + "\n", flush=True)
-        
-        # Extract nested data
-        MachineIdleTime_Detail_Enter_data = validated_data.pop('MachineIdleTime_Detail_Enter', [])
-        
-        # Store old values for restoration
-        old_lot_no_value = (instance.lot_no or "").strip()
-        old_heat_no = old_lot_no_value.split("|")[0].strip() if "|" in old_lot_no_value else old_lot_no_value
-        old_qty_effective = self.compute_effective_qty(instance.operation, instance.prod_qty, instance.ParentOperation)
-        
-        # Store original ParentOperation
-        original_parent_operation = validated_data.get('ParentOperation', instance.ParentOperation)
-
-        # Apply updates
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        print(f"✅ Updated ProductionEntry: ID={instance.id}", flush=True)
-
-        # Update nested MachineIdleTime entries
-        instance.MachineIdleTime_Detail_Enter.clear()
-        for MachineIdleTime_data in MachineIdleTime_Detail_Enter_data:
-            MachineIdleTime_Detail = MachineIdleTime.objects.create(**MachineIdleTime_data)
-            instance.MachineIdleTime_Detail_Enter.add(MachineIdleTime_Detail)
-
-        # Update ParentOperation if operation starts with "10"
-        self.update_parent_operation_for_operation_10(instance, original_parent_operation=original_parent_operation)
-
-        # ♻️ Restore old quantity to MaterialChallanTable
-        if old_qty_effective > 0:
-            old_item = MaterialChallanTable.objects.filter(HeatNo__iexact=old_heat_no).order_by('id').first()
-            if old_item:
-                restored_val = Decimal(old_item.Qty or 0) + old_qty_effective
-                old_item.Qty = str(restored_val)
-                old_item.save(update_fields=["Qty"])
-                print(f"♻️ Restored ChallanTable {old_item.id}: +{old_qty_effective} (HeatNo={old_heat_no})", flush=True)
-
-        # Subtract new quantity
-        new_lot_no_value = (instance.lot_no or "").strip()
-        new_heat_no = new_lot_no_value.split("|")[0].strip() if "|" in new_lot_no_value else new_lot_no_value
-        new_operation = validated_data.get('operation', instance.operation)
-        new_prod_qty = Decimal(validated_data.get('prod_qty', instance.prod_qty) or 0)
-
-        new_qty_effective = self.compute_effective_qty(new_operation, new_prod_qty, original_parent_operation)
-        print(f"📊 New quantity to subtract: {new_qty_effective}", flush=True)
-
-        # if new_qty_effective <= 0:
-        #     print(f"⚠️ new_qty_effective <= 0, skipping FIFO subtraction", flush=True)
-        #     return instance
-        
-
-        operation_clean = str(new_operation).replace(" ", "").split("|")[0]
-
-        if not operation_clean.startswith("10"):
-            print("⏭️ Skipping FIFO subtraction — operation is not starting with 10", flush=True)
-            return instance
-
-        if new_qty_effective <= 0:
-            print(f"⚠️ new_qty_effective <= 0, skipping FIFO subtraction", flush=True)
-            return instance
-
-# FIFO subtraction continues...
-
-        
-
-
-
-
-        # FIFO subtraction
-        print(f"🔄 Starting FIFO subtraction for HeatNo: {new_heat_no}", flush=True)
-        remaining_new = Decimal(new_qty_effective)
-        for item in MaterialChallanTable.objects.filter(HeatNo__iexact=new_heat_no).order_by('id'):
-            if remaining_new <= 0:
-                break
-            current_qty = Decimal(item.Qty or 0)
-            if current_qty <= 0:
-                continue
-            to_subtract = min(current_qty, remaining_new)
-            item.Qty = str(current_qty - to_subtract)
-            item.save(update_fields=["Qty"])
-            print(f"✓ Updated ChallanTable {item.id} FIFO: {current_qty} → {item.Qty} (−{to_subtract}, HeatNo={new_heat_no})", flush=True)
-            remaining_new -= to_subtract
-
-        print(f"✅ OOPurchaseSerializer.update() COMPLETED\n", flush=True)
-        return instance
-
-    
-
-"""
-
-
-
-
-
-
-
 
 
 
@@ -1868,7 +1741,8 @@ class BOMItemdropSerializer(serializers.ModelSerializer):
 """This is the final working on both side server and local
 In this Production and Inwardchallan both side heat no wise stock will subtract"""
 import re
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
+
 from rest_framework import serializers
 from Store.models import InwardChallanTable
 from django.db.models import Q
@@ -1879,6 +1753,184 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductionEntry
         fields = '__all__'
+
+    def calculate_bar_wire_rod(self, production):
+
+        raw_material = (
+            production.raw_material or ""
+        ).strip()
+
+        if not raw_material:
+            return
+
+        # Example:
+        # RM1006 | RMCoil | CoilRaw
+        rm_code = raw_material.split("|")[0].strip()
+
+        # --------------------------------------------------
+        # ORIGINAL PRODUCTION QTY
+        # --------------------------------------------------
+        try:
+            original_qty = Decimal(
+                str(production.prod_qty or 0)
+            )
+        except (InvalidOperation, TypeError, ValueError):
+            original_qty = Decimal("0")
+
+        if original_qty <= 0:
+            production.qty = Decimal("0")
+            production.bar_value = Decimal("0")
+            production.wier_rod_value = Decimal("0")
+
+            production.save(
+                update_fields=[
+                    "qty",
+                    "bar_value",
+                    "wier_rod_value"
+                ]
+            )
+
+            return
+
+        # --------------------------------------------------
+        # FIND RM BOM
+        # --------------------------------------------------
+        bom_item = (
+            BOMItem.objects
+            .filter(
+                BOMPartType__iexact="RM",
+                BomPartCode__iexact=rm_code
+            )
+            .first()
+        )
+
+        if not bom_item:
+
+            print(
+                f"⚠️ BOM not found for RM: {rm_code}"
+            )
+
+            # Original qty remains in qty
+            production.qty = original_qty
+
+            production.bar_value = Decimal("0")
+            production.wier_rod_value = Decimal("0")
+
+            production.save(
+                update_fields=[
+                    "qty",
+                    "bar_value",
+                    "wier_rod_value"
+                ]
+            )
+
+            return
+
+        # --------------------------------------------------
+        # BAR %
+        # --------------------------------------------------
+        try:
+            bar_percentage = Decimal(
+                str(bom_item.bar or 0)
+            )
+        except (InvalidOperation, TypeError, ValueError):
+            bar_percentage = Decimal("0")
+
+        # --------------------------------------------------
+        # WIRE ROD %
+        # --------------------------------------------------
+        try:
+            wire_rod_percentage = Decimal(
+                str(bom_item.wire_rod or 0)
+            )
+        except (InvalidOperation, TypeError, ValueError):
+            wire_rod_percentage = Decimal("0")
+
+        # --------------------------------------------------
+        # CALCULATE BAR
+        # --------------------------------------------------
+        bar_value = (
+            original_qty * bar_percentage
+        ) / Decimal("100")
+
+        bar_value = bar_value.quantize(
+            Decimal("0.01"),
+            rounding=ROUND_DOWN
+        )
+
+        # --------------------------------------------------
+        # CALCULATE WIRE ROD
+        # --------------------------------------------------
+        wire_rod_value = (
+            original_qty * wire_rod_percentage
+        ) / Decimal("100")
+
+        wire_rod_value = wire_rod_value.quantize(
+            Decimal("0.01"),
+            rounding=ROUND_DOWN
+        )
+
+        # --------------------------------------------------
+        # REMAINING PRODUCTION QTY
+        #
+        # 10 - 0.50 - 0.50 = 9
+        # --------------------------------------------------
+        remaining_prod_qty = (
+            original_qty
+            - bar_value
+            - wire_rod_value
+        )
+
+        if remaining_prod_qty < 0:
+            remaining_prod_qty = Decimal("0")
+
+        remaining_prod_qty = remaining_prod_qty.quantize(
+            Decimal("0.01"),
+            rounding=ROUND_DOWN
+        )
+
+        # --------------------------------------------------
+        # SAVE
+        # --------------------------------------------------
+
+        # qty = ORIGINAL quantity
+        production.qty = original_qty
+
+        # bar deduction
+        production.bar_value = bar_value
+
+        # wire rod deduction
+        production.wier_rod_value = wire_rod_value
+
+        # prod_qty = REMAINING quantity
+        production.prod_qty = remaining_prod_qty
+
+        production.save(
+            update_fields=[
+                "qty",
+                "prod_qty",
+                "bar_value",
+                "wier_rod_value"
+            ]
+        )
+
+        print(
+            f"""
+            ✅ Production calculation
+
+            RM Code       : {rm_code}
+
+            Original Qty  : {original_qty}
+
+            BAR %         : {bar_percentage}
+            BAR Value     : {bar_value}
+
+            Wire Rod %    : {wire_rod_percentage}
+            Wire Rod Value: {wire_rod_value}
+
+            Final Prod Qty: {remaining_prod_qty}
+            """
+        )
 
     def get_parent_op_number(self, parent_operation):
             
@@ -2249,15 +2301,18 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
         print("🚀 OOPurchaseSerializer.create() CALLED", flush=True)
         print("="*80 + "\n", flush=True)
         
+        
         # Extract nested data
         MachineIdleTime_Detail_Enter_data = validated_data.pop('MachineIdleTime_Detail_Enter', [])
+
         
         # Store original ParentOperation before creating the object
         original_parent_operation = validated_data.get('ParentOperation', None)
         
         # Create production entry
         production_entry = ProductionEntry.objects.create(**validated_data)
-       
+        self.calculate_bar_wire_rod(production_entry)
+
         self.subtract_from_parent_operation(production_entry)
 
         print(f"✅ Created ProductionEntry: ID={production_entry.id}", flush=True)
