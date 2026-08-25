@@ -347,7 +347,7 @@ class ProductionEntrySerializer(serializers.ModelSerializer):
         - If operation starts with '10': prod_qty * BOMQty (truncated to 2 decimals)
         - Otherwise: prod_qty
         """
-        prod_qty = Decimal(production.prod_qty or 0)
+        qty = Decimal(production.qty or 0)
         operation = (production.operation or "").strip()
         
         if operation.startswith("10"):
@@ -355,9 +355,9 @@ class ProductionEntrySerializer(serializers.ModelSerializer):
             parent_op_source = original_parent_operation if original_parent_operation is not None else production.ParentOperation
             bom_qty = self.extract_bom_qty(parent_op_source)
             # Truncate (ROUND_DOWN) to 2 decimals after multiplication
-            return (prod_qty * bom_qty).quantize(Decimal("0.01"), rounding=Decimal.ROUND_DOWN)
+            return (qty ).quantize(Decimal("0.01"), rounding=Decimal.ROUND_DOWN)
         
-        return prod_qty
+        return qty
 
     def update_parent_operation_for_operation_10(self, production, original_parent_operation=None):
         """Update ParentOperation when operation starts with '10': BOMQty = (BOMQty * prod_qty) - prod_qty"""
@@ -402,16 +402,16 @@ class ProductionEntrySerializer(serializers.ModelSerializer):
 
         # Compute quantity to subtract based on operation type
         operation = (production.operation or "").strip()
-        prod_qty = Decimal(production.prod_qty or 0)
+        qty = Decimal(production.qty or 0)
         
         if operation.startswith("10"):
             # ✅ For operation starting with "10": multiply prod_qty * BOMQty
             bom_qty = self.extract_bom_qty(original_parent_operation)
-            qty_to_subtract = (prod_qty * bom_qty).quantize(Decimal("0.01"), rounding=Decimal.ROUND_DOWN)
-            print(f"🔢 Operation 10 - prod_qty: {prod_qty}, BOMQty: {bom_qty}, qty_to_subtract: {qty_to_subtract}")
+            qty_to_subtract = (qty).quantize(Decimal("0.01"), rounding=Decimal.ROUND_DOWN)
+            print(f"🔢 Operation 10 - prod_qty: {qty}, BOMQty: {bom_qty}, qty_to_subtract: {qty_to_subtract}")
         else:
             # ✅ For other operations: just use prod_qty
-            qty_to_subtract = prod_qty
+            qty_to_subtract = qty
             print(f"🔢 Other Operation - qty_to_subtract: {qty_to_subtract}")
         
         if qty_to_subtract <= 0:
@@ -468,20 +468,20 @@ class ProductionEntrySerializer(serializers.ModelSerializer):
         # Get new operation and prod_qty from validated_data or instance
         new_operation = validated_data.get('operation', instance.operation) or ""
         new_operation = new_operation.strip() if isinstance(new_operation, str) else str(new_operation).strip()
-        new_prod_qty = Decimal(validated_data.get('prod_qty', instance.prod_qty) or 0)
+        new_qty = Decimal(validated_data.get('qty', instance.prod_qty) or 0)
         
         if new_operation.startswith("10"):
             # ✅ For operation starting with "10": multiply prod_qty * BOMQty
             bom_qty = self.extract_bom_qty(original_parent_operation)
-            new_qty_effective = (new_prod_qty * bom_qty).quantize(Decimal("0.01"), rounding=Decimal.ROUND_DOWN)
-            print(f"🔢 Updated Operation 10 - prod_qty: {new_prod_qty}, BOMQty: {bom_qty}, qty_to_subtract: {new_qty_effective}")
+            new_qty_effective = (new_qty ).quantize(Decimal("0.01"), rounding=Decimal.ROUND_DOWN)
+            print(f"🔢 Updated Operation 10 - prod_qty: {new_qty}, BOMQty: {bom_qty}, qty_to_subtract: {new_qty_effective}")
         else:
             # ✅ For other operations: just use prod_qty
-            new_qty_effective = new_prod_qty
+            new_qty_effective = new_qty
             print(f"🔢 Updated Other Operation - qty_to_subtract: {new_qty_effective}")
         
         if new_qty_effective <= 0:
-            return instance
+            return instance 
 
         # FIFO subtraction from MaterialChallanTable
         remaining_new = Decimal(new_qty_effective)
@@ -2250,24 +2250,24 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
     # -------------------------------------------------------------
     # Compute effective qty (depends on operation type)
     # -------------------------------------------------------------
-    def compute_effective_qty(self, operation, prod_qty, parent_operation):
-        print(f"[COMPUTE_QTY] START - operation={operation}, prod_qty={prod_qty}", flush=True)
+    def compute_effective_qty(self, operation, qty, parent_operation):
+        print(f"[COMPUTE_QTY] START - operation={operation}, prod_qty={qty}", flush=True)
         
-        prod_qty = Decimal(str(prod_qty or 0))
+        qty = Decimal(str(qty or 0))
         operation_str = str(operation or "").strip().replace(" ", "").replace("|", "")
         bom_qty = self.extract_bom_qty(parent_operation)
 
-        print(f"DEBUG: operation_str={operation_str}, bom_qty={bom_qty}, prod_qty={prod_qty}", flush=True)
+        print(f"DEBUG: operation_str={operation_str}, bom_qty={bom_qty}, prod_qty={qty}", flush=True)
 
         # ✅ If operation starts with '10' → multiply prod_qty * BOMQty
         if operation_str.startswith("10"):
-            effective = (prod_qty * bom_qty).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
-            print(f"✅ Operation starts with 10 → {prod_qty} × {bom_qty} = {effective}", flush=True)
+            effective = (qty).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+            print(f"✅ Operation starts with 10 → {qty} × {bom_qty} = {effective}", flush=True)
             return effective
 
         # Otherwise → just prod_qty
-        print(f"⚪ Operation not starting with 10 → Use prod_qty only = {prod_qty}", flush=True)
-        return prod_qty
+        print(f"⚪ Operation not starting with 10 → Use prod_qty only = {qty}", flush=True)
+        return qty
 
     # -------------------------------------------------------------
     # Update ParentOperation when operation starts with "10"
@@ -2332,9 +2332,9 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
 
         # Compute effective quantity based on operation type
         operation = (production_entry.operation or "").strip()
-        prod_qty = Decimal(production_entry.prod_qty or 0)
+        qty = Decimal(production_entry.qty or 0)
 
-        qty_to_subtract = self.compute_effective_qty(operation, prod_qty, original_parent_operation)
+        qty_to_subtract = self.compute_effective_qty(operation, qty, original_parent_operation)
         
         # print(f"📊 Quantity to subtract: {qty_to_subtract}", flush=True)
 
@@ -2429,9 +2429,9 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
         new_lot_no_value = (instance.lot_no or "").strip()
         new_heat_no = new_lot_no_value.split("|")[0].strip() if "|" in new_lot_no_value else new_lot_no_value
         new_operation = validated_data.get('operation', instance.operation)
-        new_prod_qty = Decimal(validated_data.get('prod_qty', instance.prod_qty) or 0)
+        new_qty = Decimal(validated_data.get('qty', instance.prod_qty) or 0)
 
-        new_qty_effective = self.compute_effective_qty(new_operation, new_prod_qty, original_parent_operation)
+        new_qty_effective = self.compute_effective_qty(new_operation, new_qty, original_parent_operation)
         print(f"📊 New quantity to subtract: {new_qty_effective}", flush=True)
 
         # if new_qty_effective <= 0:

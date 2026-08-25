@@ -123,4 +123,15 @@ urlpatterns = [
         name="get_rm_jobwork_rm_items"
     ),
     path('jobworkinward/rm/',rm_jobwork_item,name="get-rm-jobworkinward-for-materialissune-challan"),
+    path(
+        "opening-stock-rm/",
+        OpeningStockRMAPIView.as_view(),
+        name="opening-stock-rm"
+    ),
+
+    path(
+        "opening-stock-rm/<int:pk>/",
+        OpeningStockRMAPIView.as_view(),
+        name="opening-stock-rm-detail"
+    ),
 ]

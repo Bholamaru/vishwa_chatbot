@@ -731,3 +731,17 @@ class OpeningStockFG(models.Model):
     rate= models.DecimalField(max_digits=50,decimal_places=2,blank=True,null=True)
     remark_note = models.TextField(blank=True,null=True)
     
+
+
+class OpeningStockRM(models.Model):
+    plant = models.CharField(max_length=200,blank=True,null=True)
+    item_category = models.CharField(max_length=200,blank=True,null=True)
+    no = models.CharField(max_length=200,blank=True,null=True)
+    date = models.DateField(blank=True,null=True)
+    item_code = models.CharField(max_length=200,blank=True,null=True)
+    heat_no = models.CharField(max_length=200,blank=True,null=True)
+    new_heat_code = models.CharField(max_length=200,blank=True,null=True)
+    supp_heat_no = models.CharField(max_length=200,blank=True,null=True)
+    qty = models.CharField(max_length=200,blank=True,null=True)
+    rate = models.CharField(max_length=200,blank=True,null=True)
+    remark = models.TextField(blank=True,null=True)

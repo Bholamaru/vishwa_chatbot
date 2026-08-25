@@ -1435,3 +1435,12 @@ class MaterialChallanSerializer(serializers.ModelSerializer):
                 )
 
         return instance
+
+
+
+
+
+class OpeningStockRMSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OpeningStockRM
+        fields = "__all__"

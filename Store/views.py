@@ -5213,20 +5213,338 @@ from .models import (
 #         )
 
 
+# @api_view(["GET"])
+# def get_rm_jobwork_items(request):
+
+#     try:
+#         # --------------------------------------------------
+#         # Optional search
+#         # --------------------------------------------------
+#         search_item_code = request.GET.get(
+#             "item_code", ""
+#         ).strip()
+
+#         # --------------------------------------------------
+#         # JOBWORK / GRN DATA
+#         # --------------------------------------------------
+#         queryset = JobworkInwardChallanTable.objects.filter(
+#             ItemCode__istartswith="RM"
+#         )
+
+#         # Search particular RM item
+#         if search_item_code:
+#             queryset = queryset.filter(
+#                 ItemCode__istartswith=search_item_code + " |"
+#             )
+
+#         grn_items = queryset.values(
+#             "ItemCode",
+#             "HeatNo",
+#             "GRNQty",
+#             "bar",
+#             "wire_rod"
+#         )
+
+#         # --------------------------------------------------
+#         # MATERIAL ISSUE / SHOP FLOOR DATA
+#         # --------------------------------------------------
+#         material_items = MaterialChallanTable.objects.filter(
+#             MaterialChallanDetail__Item__istartswith="RM"
+#         ).values(
+#             "MaterialChallanDetail__Item",
+#             "Qty"
+#         )
+
+#         # Search particular item
+#         if search_item_code:
+#             material_items = material_items.filter(
+#                 MaterialChallanDetail__Item__istartswith=
+#                 search_item_code + " -"
+#             )
+
+#         # --------------------------------------------------
+#         # Calculate ShopFloor quantity
+#         # --------------------------------------------------
+#         shopfloor = {}
+
+#         for item in material_items:
+
+#             full_item = (
+#                 item["MaterialChallanDetail__Item"] or ""
+#             )
+
+#             # Example:
+#             # RM1006 - RMCoil - CoilRaw
+
+#             parts = [
+#                 part.strip()
+#                 for part in full_item.split("-")
+#             ]
+
+#             item_code = parts[0] if parts else ""
+
+#             try:
+#                 qty = float(item["Qty"] or 0)
+#             except (ValueError, TypeError):
+#                 qty = 0
+
+#             if item_code not in shopfloor:
+#                 shopfloor[item_code] = 0
+
+#             shopfloor[item_code] += qty
+
+#         # --------------------------------------------------
+#         # Prepare final result
+#         # --------------------------------------------------
+#         result = {}
+
+#         for item in grn_items:
+
+#             full_item_code = item["ItemCode"] or ""
+
+#             # Example:
+#             # RM1006 | RMCoil | CoilRaw
+
+#             parts = [
+#                 part.strip()
+#                 for part in full_item_code.split("|")
+#             ]
+
+#             item_code = parts[0] if len(parts) > 0 else ""
+#             item_no = parts[1] if len(parts) > 1 else ""
+#             description = parts[2] if len(parts) > 2 else ""
+
+#             # --------------------------------------------------
+#             # GRN Qty
+#             # --------------------------------------------------
+#             try:
+#                 grn_qty = float(item["GRNQty"] or 0)
+#             except (ValueError, TypeError):
+#                 grn_qty = 0
+
+#             # --------------------------------------------------
+#             # BAR
+#             # --------------------------------------------------
+#             try:
+#                 bar = float(item["bar"] or 0)
+#             except (ValueError, TypeError):
+#                 bar = 0
+
+#             # --------------------------------------------------
+#             # WIRE ROD
+#             # --------------------------------------------------
+#             try:
+#                 wire_rod = float(item["wire_rod"] or 0)
+#             except (ValueError, TypeError):
+#                 wire_rod = 0
+
+#             # --------------------------------------------------
+#             # Create item
+#             # --------------------------------------------------
+#             if item_code not in result:
+
+#                 result[item_code] = {
+#                     "item_code": item_code,
+#                     "item_no": item_no,
+#                     "description": description,
+
+#                     # Total GRN stock
+#                     "stock": 0,
+#                     "total": 0,
+#                     # Total ShopFloor
+#                     "ShopFloor": shopfloor.get(
+#                         item_code, 0
+#                     ),
+
+#                     # Overall item totals
+#                     "bar": 0,
+#                     "wire_rod": 0,
+
+#                     # Heat-wise data
+#                     "variants": []
+#                 }
+
+#             # --------------------------------------------------
+#             # Overall item totals
+#             # --------------------------------------------------
+#             result[item_code]["stock"] += grn_qty
+
+#             result[item_code]["bar"] += bar
+
+#             result[item_code]["wire_rod"] += wire_rod
+
+#             # --------------------------------------------------
+#             # HeatNo wise data
+#             # --------------------------------------------------
+#             heat_no = item["HeatNo"] or ""
+
+#             existing_variant = next(
+#                 (
+#                     variant
+#                     for variant in result[item_code]["variants"]
+#                     if variant["HeatNo"] == heat_no
+#                 ),
+#                 None
+#             )
+
+#             if existing_variant:
+
+#                 existing_variant["GRNQty"] += grn_qty
+#                 existing_variant["bar"] += bar
+#                 existing_variant["wire_rod"] += wire_rod
+
+#             else:
+
+#                 result[item_code]["variants"].append({
+#                     "HeatNo": heat_no,
+#                     "GRNQty": grn_qty,
+#                     "bar": bar,
+#                     "wire_rod": wire_rod
+#                 })
+
+#         # --------------------------------------------------
+#         # Format numbers
+#         # --------------------------------------------------
+#         data = []
+
+#         for item in result.values():
+
+#             item["total"] = (item["stock"]+ item["bar"]+ item["wire_rod"])
+
+
+#             # Stock
+#             if item["stock"].is_integer():
+#                 item["stock"] = int(item["stock"])
+#             else:
+#                 item["stock"] = round(
+#                     item["stock"], 2
+#                 )
+
+#             # ShopFloor
+#             if item["ShopFloor"].is_integer():
+#                 item["ShopFloor"] = int(
+#                     item["ShopFloor"]
+#                 )
+#             else:
+#                 item["ShopFloor"] = round(
+#                     item["ShopFloor"], 2
+#                 )
+
+#             # Total BAR
+#             if item["bar"].is_integer():
+#                 item["bar"] = int(item["bar"])
+#             else:
+#                 item["bar"] = round(
+#                     item["bar"], 2
+#                 )
+
+#             # Total WIRE ROD
+#             if item["wire_rod"].is_integer():
+#                 item["wire_rod"] = int(
+#                     item["wire_rod"]
+#                 )
+#             else:
+#                 item["wire_rod"] = round(
+#                     item["wire_rod"], 2
+#                 )
+
+#             # --------------------------------------------------
+#             # Heat-wise formatting
+#             # --------------------------------------------------
+#             for variant in item["variants"]:
+
+#                 variant["total"] = (
+#                         variant["GRNQty"]
+#                         + variant["bar"]
+#                         + variant["wire_rod"]
+#                     )
+
+#                 if variant["GRNQty"].is_integer():
+#                     variant["GRNQty"] = int(
+#                         variant["GRNQty"]
+#                     )
+#                 else:
+#                     variant["GRNQty"] = round(
+#                         variant["GRNQty"], 2
+#                     )
+
+#                 if variant["bar"].is_integer():
+#                     variant["bar"] = int(
+#                         variant["bar"]
+#                     )
+#                 else:
+#                     variant["bar"] = round(
+#                         variant["bar"], 2
+#                     )
+
+#                 if variant["wire_rod"].is_integer():
+#                     variant["wire_rod"] = int(
+#                         variant["wire_rod"]
+#                     )
+#                 else:
+#                     variant["wire_rod"] = round(
+#                         variant["wire_rod"], 2
+#                     )
+
+#                 if variant["total"].is_integer():
+#                     variant["total"] = int(
+#                         variant["total"]
+#                     )
+#                 else:
+#                     variant["total"] = round(
+#                         variant["total"], 2
+#                     )
+
+#             data.append(item)
+
+#         # --------------------------------------------------
+#         # Response
+#         # --------------------------------------------------
+#         return Response({
+#             "status": True,
+#             "count": len(data),
+#             "data": data
+#         })
+
+#     except Exception as e:
+
+#         return Response(
+#             {
+#                 "status": False,
+#                 "message": str(e)
+#             },
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#         )
+
+
+from decimal import Decimal, InvalidOperation
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import (
+    JobworkInwardChallanTable,
+    MaterialChallanTable,
+)
+
+
 @api_view(["GET"])
 def get_rm_jobwork_items(request):
 
     try:
-        # --------------------------------------------------
-        # Optional search
-        # --------------------------------------------------
+
+        # ==========================================================
+        # OPTIONAL SEARCH
+        # ==========================================================
         search_item_code = request.GET.get(
-            "item_code", ""
+            "item_code",
+            ""
         ).strip()
 
-        # --------------------------------------------------
+        # ==========================================================
         # JOBWORK / GRN DATA
-        # --------------------------------------------------
+        # ==========================================================
         queryset = JobworkInwardChallanTable.objects.filter(
             ItemCode__istartswith="RM"
         )
@@ -5240,37 +5558,175 @@ def get_rm_jobwork_items(request):
         grn_items = queryset.values(
             "ItemCode",
             "HeatNo",
-            "GRNQty",
-            "bar",
-            "wire_rod"
+            "GRNQty"
         )
 
-        # --------------------------------------------------
-        # MATERIAL ISSUE / SHOP FLOOR DATA
-        # --------------------------------------------------
-        material_items = MaterialChallanTable.objects.filter(
-            MaterialChallanDetail__Item__istartswith="RM"
+        # ==========================================================
+        # PRODUCTION DATA
+        #
+        # bar_value and wier_rod_value now come from ProductionEntry
+        # ==========================================================
+        production_queryset = ProductionEntry.objects.filter(
+            raw_material__istartswith="RM"
         ).values(
-            "MaterialChallanDetail__Item",
-            "Qty"
+            "raw_material",
+            "lot_no",
+            "bar_value",
+            "wier_rod_value"
+        )
+
+        # Search particular RM item
+        if search_item_code:
+            production_queryset = production_queryset.filter(
+                raw_material__istartswith=search_item_code
+            )
+
+        # ==========================================================
+        # PREPARE PRODUCTION DATA
+        #
+        # Structure:
+        #
+        # production_data = {
+        #     "RM1006": {
+        #         "LK100": {
+        #             "bar": 1.0,
+        #             "wire_rod": 1.0
+        #         }
+        #     }
+        # }
+        # ==========================================================
+
+        production_data = {}
+
+        for production in production_queryset:
+
+            # ------------------------------------------------------
+            # RM CODE
+            # ------------------------------------------------------
+            raw_material = (
+                production["raw_material"] or ""
+            ).strip()
+
+            if not raw_material:
+                continue
+
+            # Example:
+            # RM1006
+            #
+            # Or:
+            # RM1006 | RMCoil | CoilRaw
+            rm_code = raw_material.split("|")[0].strip()
+
+            # ------------------------------------------------------
+            # HEAT NO
+            # ------------------------------------------------------
+            lot_no = (
+                production["lot_no"] or ""
+            ).strip()
+
+            # Example:
+            # LK100|40
+            #
+            # HeatNo = LK100
+            heat_no = (
+                lot_no.split("|")[0].strip()
+                if "|" in lot_no
+                else lot_no
+            )
+
+            if not heat_no:
+                continue
+
+            # ------------------------------------------------------
+            # BAR VALUE
+            # ------------------------------------------------------
+            try:
+                bar_value = float(
+                    production["bar_value"] or 0
+                )
+            except (
+                ValueError,
+                TypeError,
+                InvalidOperation
+            ):
+                bar_value = 0
+
+            # ------------------------------------------------------
+            # WIRE ROD VALUE
+            # ------------------------------------------------------
+            try:
+                wire_rod_value = float(
+                    production["wier_rod_value"] or 0
+                )
+            except (
+                ValueError,
+                TypeError,
+                InvalidOperation
+            ):
+                wire_rod_value = 0
+
+            # ------------------------------------------------------
+            # CREATE RM
+            # ------------------------------------------------------
+            if rm_code not in production_data:
+
+                production_data[rm_code] = {}
+
+            # ------------------------------------------------------
+            # CREATE HEAT
+            # ------------------------------------------------------
+            if heat_no not in production_data[rm_code]:
+
+                production_data[rm_code][heat_no] = {
+                    "bar": 0,
+                    "wire_rod": 0
+                }
+
+            # ------------------------------------------------------
+            # ADD PRODUCTION VALUES
+            #
+            # Multiple ProductionEntry records for same
+            # RM + HeatNo will be summed.
+            # ------------------------------------------------------
+            production_data[rm_code][heat_no]["bar"] += bar_value
+
+            production_data[rm_code][heat_no]["wire_rod"] += (
+                wire_rod_value
+            )
+
+        # ==========================================================
+        # MATERIAL ISSUE / SHOP FLOOR DATA
+        # ==========================================================
+        material_items = (
+            MaterialChallanTable.objects
+            .filter(
+                MaterialChallanDetail__Item__istartswith="RM"
+            )
+            .values(
+                "MaterialChallanDetail__Item",
+                "Qty"
+            )
         )
 
         # Search particular item
         if search_item_code:
+
             material_items = material_items.filter(
                 MaterialChallanDetail__Item__istartswith=
                 search_item_code + " -"
             )
 
-        # --------------------------------------------------
-        # Calculate ShopFloor quantity
-        # --------------------------------------------------
+        # ==========================================================
+        # CALCULATE SHOP FLOOR
+        # ==========================================================
         shopfloor = {}
 
         for item in material_items:
 
             full_item = (
-                item["MaterialChallanDetail__Item"] or ""
+                item[
+                    "MaterialChallanDetail__Item"
+                ] or ""
             )
 
             # Example:
@@ -5281,26 +5737,41 @@ def get_rm_jobwork_items(request):
                 for part in full_item.split("-")
             ]
 
-            item_code = parts[0] if parts else ""
+            item_code = (
+                parts[0]
+                if parts
+                else ""
+            )
 
             try:
-                qty = float(item["Qty"] or 0)
-            except (ValueError, TypeError):
+                qty = float(
+                    item["Qty"] or 0
+                )
+            except (
+                ValueError,
+                TypeError
+            ):
                 qty = 0
 
             if item_code not in shopfloor:
+
                 shopfloor[item_code] = 0
 
             shopfloor[item_code] += qty
 
-        # --------------------------------------------------
-        # Prepare final result
-        # --------------------------------------------------
+        # ==========================================================
+        # PREPARE FINAL RESULT
+        # ==========================================================
         result = {}
 
         for item in grn_items:
 
-            full_item_code = item["ItemCode"] or ""
+            # ------------------------------------------------------
+            # FULL ITEM CODE
+            # ------------------------------------------------------
+            full_item_code = (
+                item["ItemCode"] or ""
+            )
 
             # Example:
             # RM1006 | RMCoil | CoilRaw
@@ -5310,78 +5781,133 @@ def get_rm_jobwork_items(request):
                 for part in full_item_code.split("|")
             ]
 
-            item_code = parts[0] if len(parts) > 0 else ""
-            item_no = parts[1] if len(parts) > 1 else ""
-            description = parts[2] if len(parts) > 2 else ""
+            item_code = (
+                parts[0]
+                if len(parts) > 0
+                else ""
+            )
 
-            # --------------------------------------------------
-            # GRN Qty
-            # --------------------------------------------------
+            item_no = (
+                parts[1]
+                if len(parts) > 1
+                else ""
+            )
+
+            description = (
+                parts[2]
+                if len(parts) > 2
+                else ""
+            )
+
+            # ------------------------------------------------------
+            # GRN QTY
+            # ------------------------------------------------------
             try:
-                grn_qty = float(item["GRNQty"] or 0)
-            except (ValueError, TypeError):
+                grn_qty = float(
+                    item["GRNQty"] or 0
+                )
+            except (
+                ValueError,
+                TypeError
+            ):
                 grn_qty = 0
 
-            # --------------------------------------------------
-            # BAR
-            # --------------------------------------------------
-            try:
-                bar = float(item["bar"] or 0)
-            except (ValueError, TypeError):
-                bar = 0
+            # ------------------------------------------------------
+            # HEAT NO
+            # ------------------------------------------------------
+            heat_no = (
+                item["HeatNo"] or ""
+            ).strip()
 
-            # --------------------------------------------------
-            # WIRE ROD
-            # --------------------------------------------------
-            try:
-                wire_rod = float(item["wire_rod"] or 0)
-            except (ValueError, TypeError):
-                wire_rod = 0
+            # ------------------------------------------------------
+            # GET PRODUCTION BAR/WIRE VALUE
+            #
+            # RM1006 + LK100
+            # ------------------------------------------------------
+            production_values = (
+                production_data
+                .get(item_code, {})
+                .get(
+                    heat_no,
+                    {
+                        "bar": 0,
+                        "wire_rod": 0
+                    }
+                )
+            )
 
-            # --------------------------------------------------
-            # Create item
-            # --------------------------------------------------
+            bar = production_values["bar"]
+
+            wire_rod = production_values["wire_rod"]
+
+            # ======================================================
+            # CREATE ITEM
+            # ======================================================
             if item_code not in result:
 
                 result[item_code] = {
+
                     "item_code": item_code,
+
                     "item_no": item_no,
+
                     "description": description,
 
+                    # ------------------------------------------------
                     # Total GRN stock
+                    # ------------------------------------------------
                     "stock": 0,
-                    "total": 0,
-                    # Total ShopFloor
-                    "ShopFloor": shopfloor.get(
-                        item_code, 0
-                    ),
 
-                    # Overall item totals
+                    # ------------------------------------------------
+                    # Overall production BAR
+                    # ------------------------------------------------
                     "bar": 0,
+
+                    # ------------------------------------------------
+                    # Overall production WIRE ROD
+                    # ------------------------------------------------
                     "wire_rod": 0,
 
-                    # Heat-wise data
+                    # ------------------------------------------------
+                    # Total:
+                    # stock + bar + wire_rod
+                    # ------------------------------------------------
+                    "total": 0,
+
+                    # ------------------------------------------------
+                    # Shop floor
+                    # ------------------------------------------------
+                    "ShopFloor": shopfloor.get(
+                        item_code,
+                        0
+                    ),
+
+                    # ------------------------------------------------
+                    # Heat-wise
+                    # ------------------------------------------------
                     "variants": []
                 }
 
-            # --------------------------------------------------
-            # Overall item totals
-            # --------------------------------------------------
+            # ======================================================
+            # OVERALL ITEM TOTALS
+            # ======================================================
+
             result[item_code]["stock"] += grn_qty
 
             result[item_code]["bar"] += bar
 
             result[item_code]["wire_rod"] += wire_rod
 
-            # --------------------------------------------------
-            # HeatNo wise data
-            # --------------------------------------------------
-            heat_no = item["HeatNo"] or ""
+            # ======================================================
+            # HEAT-WISE DATA
+            # ======================================================
 
             existing_variant = next(
                 (
                     variant
-                    for variant in result[item_code]["variants"]
+                    for variant in result[
+                        item_code
+                    ]["variants"]
                     if variant["HeatNo"] == heat_no
                 ),
                 None
@@ -5389,129 +5915,388 @@ def get_rm_jobwork_items(request):
 
             if existing_variant:
 
-                existing_variant["GRNQty"] += grn_qty
-                existing_variant["bar"] += bar
-                existing_variant["wire_rod"] += wire_rod
+                existing_variant["GRNQty"] += (
+                    grn_qty
+                )
+
+                existing_variant["bar"] += (
+                    bar
+                )
+
+                existing_variant["wire_rod"] += (
+                    wire_rod
+                )
 
             else:
 
                 result[item_code]["variants"].append({
+
                     "HeatNo": heat_no,
+
                     "GRNQty": grn_qty,
+
                     "bar": bar,
-                    "wire_rod": wire_rod
+
+                    "wire_rod": wire_rod,
+
+                    # ------------------------------------------------
+                    # Heat total
+                    # ------------------------------------------------
+                    "total": (
+                        grn_qty
+                        + bar
+                        + wire_rod
+                    )
                 })
 
-        # --------------------------------------------------
-        # Format numbers
-        # --------------------------------------------------
+        # ==========================================================
+        # FORMAT NUMBERS
+        # ==========================================================
         data = []
 
         for item in result.values():
 
-            item["total"] = (item["stock"]+ item["bar"]+ item["wire_rod"])
+            # ------------------------------------------------------
+            # OVERALL TOTAL
+            # ------------------------------------------------------
+            item["total"] = (
+                item["stock"]
+                + item["bar"]
+                + item["wire_rod"]
+            )
 
-
-            # Stock
+            # ======================================================
+            # STOCK
+            # ======================================================
             if item["stock"].is_integer():
-                item["stock"] = int(item["stock"])
-            else:
-                item["stock"] = round(
-                    item["stock"], 2
+
+                item["stock"] = int(
+                    item["stock"]
                 )
 
-            # ShopFloor
+            else:
+
+                item["stock"] = round(
+                    item["stock"],
+                    2
+                )
+
+            # ======================================================
+            # SHOP FLOOR
+            # ======================================================
             if item["ShopFloor"].is_integer():
+
                 item["ShopFloor"] = int(
                     item["ShopFloor"]
                 )
+
             else:
+
                 item["ShopFloor"] = round(
-                    item["ShopFloor"], 2
+                    item["ShopFloor"],
+                    2
                 )
 
-            # Total BAR
+            # ======================================================
+            # BAR
+            # ======================================================
             if item["bar"].is_integer():
-                item["bar"] = int(item["bar"])
-            else:
-                item["bar"] = round(
-                    item["bar"], 2
+
+                item["bar"] = int(
+                    item["bar"]
                 )
 
-            # Total WIRE ROD
+            else:
+
+                item["bar"] = round(
+                    item["bar"],
+                    2
+                )
+
+            # ======================================================
+            # WIRE ROD
+            # ======================================================
             if item["wire_rod"].is_integer():
+
                 item["wire_rod"] = int(
                     item["wire_rod"]
                 )
+
             else:
+
                 item["wire_rod"] = round(
-                    item["wire_rod"], 2
+                    item["wire_rod"],
+                    2
                 )
 
-            # --------------------------------------------------
-            # Heat-wise formatting
-            # --------------------------------------------------
+            # ======================================================
+            # TOTAL
+            # ======================================================
+            if item["total"].is_integer():
+
+                item["total"] = int(
+                    item["total"]
+                )
+
+            else:
+
+                item["total"] = round(
+                    item["total"],
+                    2
+                )
+
+            # ======================================================
+            # HEAT-WISE FORMATTING
+            # ======================================================
             for variant in item["variants"]:
 
+                # --------------------------------------------------
+                # Heat total
+                # --------------------------------------------------
                 variant["total"] = (
-                        variant["GRNQty"]
-                        + variant["bar"]
-                        + variant["wire_rod"]
-                    )
+                    variant["GRNQty"]
+                    + variant["bar"]
+                    + variant["wire_rod"]
+                )
 
+                # --------------------------------------------------
+                # GRN
+                # --------------------------------------------------
                 if variant["GRNQty"].is_integer():
+
                     variant["GRNQty"] = int(
                         variant["GRNQty"]
                     )
+
                 else:
+
                     variant["GRNQty"] = round(
-                        variant["GRNQty"], 2
+                        variant["GRNQty"],
+                        2
                     )
 
+                # --------------------------------------------------
+                # BAR
+                # --------------------------------------------------
                 if variant["bar"].is_integer():
+
                     variant["bar"] = int(
                         variant["bar"]
                     )
+
                 else:
+
                     variant["bar"] = round(
-                        variant["bar"], 2
+                        variant["bar"],
+                        2
                     )
 
+                # --------------------------------------------------
+                # WIRE ROD
+                # --------------------------------------------------
                 if variant["wire_rod"].is_integer():
+
                     variant["wire_rod"] = int(
                         variant["wire_rod"]
                     )
+
                 else:
+
                     variant["wire_rod"] = round(
-                        variant["wire_rod"], 2
+                        variant["wire_rod"],
+                        2
                     )
 
+                # --------------------------------------------------
+                # TOTAL
+                # --------------------------------------------------
                 if variant["total"].is_integer():
+
                     variant["total"] = int(
                         variant["total"]
                     )
+
                 else:
+
                     variant["total"] = round(
-                        variant["total"], 2
+                        variant["total"],
+                        2
                     )
 
             data.append(item)
 
-        # --------------------------------------------------
-        # Response
-        # --------------------------------------------------
+        # ==========================================================
+        # RESPONSE
+        # ==========================================================
         return Response({
+
             "status": True,
+
             "count": len(data),
+
             "data": data
         })
 
     except Exception as e:
 
         return Response(
+
             {
                 "status": False,
                 "message": str(e)
             },
+
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+    
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import OpeningStockRM
+from .serializers import OpeningStockRMSerializer
+
+
+class OpeningStockRMAPIView(APIView):
+
+    # GET - Get all Opening Stock RM records
+    def get(self, request):
+        try:
+            opening_stock = OpeningStockRM.objects.all().order_by("-id")
+            serializer = OpeningStockRMSerializer(opening_stock, many=True)
+
+            return Response(
+                {
+                    "success": True,
+                    "message": "Opening Stock RM fetched successfully",
+                    "data": serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return Response(
+                {
+                    "success": False,
+                    "message": str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # POST - Create Opening Stock RM
+    def post(self, request):
+        try:
+            serializer = OpeningStockRMSerializer(data=request.data)
+
+            if serializer.is_valid():
+                serializer.save()
+
+                return Response(
+                    {
+                        "success": True,
+                        "message": "Opening Stock RM created successfully",
+                        "data": serializer.data
+                    },
+                    status=status.HTTP_201_CREATED
+                )
+
+            return Response(
+                {
+                    "success": False,
+                    "message": "Validation error",
+                    "errors": serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception as e:
+            return Response(
+                {
+                    "success": False,
+                    "message": str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # PUT - Update Opening Stock RM
+    def put(self, request, pk):
+        try:
+            opening_stock = OpeningStockRM.objects.get(pk=pk)
+
+            serializer = OpeningStockRMSerializer(
+                opening_stock,
+                data=request.data
+            )
+
+            if serializer.is_valid():
+                serializer.save()
+
+                return Response(
+                    {
+                        "success": True,
+                        "message": "Opening Stock RM updated successfully",
+                        "data": serializer.data
+                    },
+                    status=status.HTTP_200_OK
+                )
+
+            return Response(
+                {
+                    "success": False,
+                    "message": "Validation error",
+                    "errors": serializer.errors
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        except OpeningStockRM.DoesNotExist:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Opening Stock RM not found"
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        except Exception as e:
+            return Response(
+                {
+                    "success": False,
+                    "message": str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    # DELETE - Delete Opening Stock RM
+    def delete(self, request, pk):
+        try:
+            opening_stock = OpeningStockRM.objects.get(pk=pk)
+            opening_stock.delete()
+
+            return Response(
+                {
+                    "success": True,
+                    "message": "Opening Stock RM deleted successfully"
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except OpeningStockRM.DoesNotExist:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Opening Stock RM not found"
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        except Exception as e:
+            return Response(
+                {
+                    "success": False,
+                    "message": str(e)
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
