@@ -67,3 +67,26 @@ def create_tm_number():
             return tm_no
 
     raise ValueError("No available TM numbers left for the current financial year.")
+
+
+from datetime import datetime
+from .models import OpeningStockRM
+
+
+def create_rm_number():
+    current_year = datetime.now().year % 100
+    next_year = (datetime.now().year + 1) % 100
+
+    prefix = f"{current_year:02d}{next_year:02d}"
+
+    # Start from 00001 to 99999
+    for counter in range(1, 100000):
+        rm_no = f"{prefix}{counter:05d}"
+
+        # Check uniqueness
+        if not OpeningStockRM.objects.filter(no=rm_no).exists():
+            return rm_no
+
+    raise ValueError(
+        "No available RM numbers left for the current financial year."
+    )

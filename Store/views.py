@@ -6300,3 +6300,32 @@ class OpeningStockRMAPIView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
+from .utils import create_rm_number
+class GenerateOpeningStockRMNumber(APIView):
+
+    def get(self, request):
+        try:
+            rm_no = create_rm_number()
+            return Response(
+                {
+                    "rm_no": rm_no,
+                    "message": "Opening Stock RM Number generated successfully"
+                },
+                status=status.HTTP_200_OK
+            )
+        except ValueError as e:
+            return Response(
+                {
+                    "error": str(e)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {
+                    "error": f"Unexpected error: {str(e)}"
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )

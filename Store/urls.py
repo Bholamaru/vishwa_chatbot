@@ -134,4 +134,9 @@ urlpatterns = [
         OpeningStockRMAPIView.as_view(),
         name="opening-stock-rm-detail"
     ),
+    path(
+        "generate-opening-stock-rm-number/",
+        GenerateOpeningStockRMNumber.as_view(),
+        name="generate-opening-stock-rm-number"
+    ),
 ]
