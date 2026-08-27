@@ -629,41 +629,160 @@ class InwardChallanSerializer(serializers.ModelSerializer):
 
 
 # Subcon GRN:- JobWork Inward-Challan
-from .models import JobworkInwardChallan, JobworkInwardChallanTable
+# from .models import JobworkInwardChallan, JobworkInwardChallanTable
+# class JobworkInwardChallanTableSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = JobworkInwardChallanTable
+#         fields = ['ItemCode', 'Operation', 'ChallanQty', 'GRNQty', 'MaterialRate', 'HeatNo', 'CustHeatNo', 'ParticularNatureOfProcess','FGPartCode','wire_rod','bar']
+
+# class JobworkInwardChallanSerializer(serializers.ModelSerializer):
+#     JobworkInwardChallanTable = JobworkInwardChallanTableSerializer(many=True)
+
+#     class Meta:
+#         model = JobworkInwardChallan
+#         fields = '__all__'
+
+#     def create(self, validated_data):
+#         Job_Inward_Challan_Table_data = validated_data.pop('JobworkInwardChallanTable')
+#         Job_Inward_Challan_details = JobworkInwardChallan.objects.create(**validated_data)
+
+#         for item_data in Job_Inward_Challan_Table_data:
+#             JobworkInwardChallanTable.objects.create(JobworkInwardChallanDetail=Job_Inward_Challan_details, **item_data)
+
+#         return Job_Inward_Challan_details
+
+#     def update(self, instance, validated_data):
+#         Job_Inward_Challan_Table_data = validated_data.pop('JobworkInwardChallanTable', None)
+
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
+#         instance.save()
+
+#         if Job_Inward_Challan_Table_data:
+#             instance.JobworkInwardChallanTable.all().delete()
+#             for item_data in Job_Inward_Challan_Table_data:
+#                 JobworkInwardChallanTable.objects.create(JobworkInwardChallanDetail=instance, **item_data)
+
+#         return instance
+    
+
+from django.db import transaction
+from rest_framework import serializers
+
+from .models import (
+    JobworkInwardChallan,
+    JobworkInwardChallanTable,
+)
+
+from .services.rm_stock import (
+    add_stock,
+    extract_item_code,
+)
+
+
 class JobworkInwardChallanTableSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = JobworkInwardChallanTable
-        fields = ['ItemCode', 'Operation', 'ChallanQty', 'GRNQty', 'MaterialRate', 'HeatNo', 'CustHeatNo', 'ParticularNatureOfProcess','FGPartCode','wire_rod','bar']
+        fields = [
+            "ItemCode",
+            "Operation",
+            "ChallanQty",
+            "GRNQty",
+            "MaterialRate",
+            "HeatNo",
+            "CustHeatNo",
+            "ParticularNatureOfProcess",
+            "FGPartCode",
+            "wire_rod",
+            "bar",
+        ]
+
 
 class JobworkInwardChallanSerializer(serializers.ModelSerializer):
-    JobworkInwardChallanTable = JobworkInwardChallanTableSerializer(many=True)
+
+    JobworkInwardChallanTable = JobworkInwardChallanTableSerializer(
+        many=True
+    )
 
     class Meta:
         model = JobworkInwardChallan
-        fields = '__all__'
+        fields = "__all__"
 
+    @transaction.atomic
     def create(self, validated_data):
-        Job_Inward_Challan_Table_data = validated_data.pop('JobworkInwardChallanTable')
-        Job_Inward_Challan_details = JobworkInwardChallan.objects.create(**validated_data)
 
-        for item_data in Job_Inward_Challan_Table_data:
-            JobworkInwardChallanTable.objects.create(JobworkInwardChallanDetail=Job_Inward_Challan_details, **item_data)
+        table_data = validated_data.pop(
+            "JobworkInwardChallanTable",
+            []
+        )
 
-        return Job_Inward_Challan_details
+        # 1. Create parent
+        challan = JobworkInwardChallan.objects.create(
+            **validated_data
+        )
+
+        # 2. Create detail rows
+        for item_data in table_data:
+
+            table_item = JobworkInwardChallanTable.objects.create(
+                JobworkInwardChallanDetail=challan,
+                **item_data
+            )
+
+            # 3. Extract item code
+            item_code = extract_item_code(
+                table_item.ItemCode
+            )
+
+            heat_no = (
+                table_item.HeatNo or ""
+            ).strip()
+
+            # 4. Convert quantity
+            qty = table_item.GRNQty
+
+            # 5. Add to stock
+            if qty and item_code and heat_no:
+
+                add_stock(
+                    item_code=item_code,
+                    heat_no=heat_no,
+                    qty=qty,
+                    source="JOBWORK",
+                    source_id=table_item.id,
+                    source_table="JobworkInwardChallanTable",
+                    remark="Jobwork GRN"
+                )
+
+        return challan
 
     def update(self, instance, validated_data):
-        Job_Inward_Challan_Table_data = validated_data.pop('JobworkInwardChallanTable', None)
+
+        table_data = validated_data.pop(
+            "JobworkInwardChallanTable",
+            None
+        )
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+
         instance.save()
 
-        if Job_Inward_Challan_Table_data:
+        if table_data is not None:
+
             instance.JobworkInwardChallanTable.all().delete()
-            for item_data in Job_Inward_Challan_Table_data:
-                JobworkInwardChallanTable.objects.create(JobworkInwardChallanDetail=instance, **item_data)
+
+            for item_data in table_data:
+
+                JobworkInwardChallanTable.objects.create(
+                    JobworkInwardChallanDetail=instance,
+                    **item_data
+                )
 
         return instance
+
+
 
 
 
@@ -1101,14 +1220,399 @@ class OpeningStockFGSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+#this is updated serializers
+
+# from rest_framework import serializers
+# from decimal import Decimal, InvalidOperation
+
+# from .models import (
+#     MaterialChallan,
+#     MaterialChallanTable,
+#     JobworkInwardChallanTable,
+# )
+
+
+# class MaterialChallanTableSerializer(serializers.ModelSerializer):
+
+#     class Meta:
+#         model = MaterialChallanTable
+#         fields = [
+#             'ItemDescription',
+#             'Stock',
+#             'HeatNo',
+#             'Qty',
+#             'Machine',
+#             'NatureOfWork',
+#             'MrnNo',
+#             'CoilNo',
+#             'Employee',
+#             'Dept'
+#         ]
+
+
+# class MaterialChallanSerializer(serializers.ModelSerializer):
+
+#     MaterialChallanTable = MaterialChallanTableSerializer(
+#         many=True
+#     )
+
+#     class Meta:
+#         model = MaterialChallan
+#         fields = '__all__'
+
+#     # ---------------------------------------------------------
+#     # Helper: Convert quantity safely
+#     # ---------------------------------------------------------
+#     def get_decimal(self, value):
+
+#         try:
+#             return Decimal(str(value or 0))
+#         except (InvalidOperation, ValueError, TypeError):
+#             return Decimal("0")
+#      # Helper: Update Jobwork GRN Qty
+   
+#     def update_jobwork_grn_qty(
+#         self,
+#         item_code,
+#         heat_no,
+#         qty,
+#         operation="subtract"
+#     ):
+
+#         item_code = (item_code or "").strip()
+#         heat_no = (heat_no or "").strip()
+
+#         if not item_code or not heat_no:
+#             return
+
+#         # Match ItemCode + HeatNo
+#         grn_items = JobworkInwardChallanTable.objects.filter(
+#             ItemCode__iexact=item_code,
+#             HeatNo__iexact=heat_no
+#         )
+
+#         for grn_item in grn_items:
+
+#             current_qty = self.get_decimal(
+#                 grn_item.GRNQty
+#             )
+
+#             qty = self.get_decimal(qty)
+
+#             if operation == "subtract":
+
+#                 new_qty = max(
+#                     current_qty - qty,
+#                     Decimal("0")
+#                 )
+
+#             else:
+
+#                 # restore quantity
+#                 new_qty = current_qty + qty
+
+#             grn_item.GRNQty = str(new_qty)
+
+#             grn_item.save(
+#                 update_fields=["GRNQty"]
+#             )
+
+#             print(
+#                 f"Jobwork GRN {grn_item.id}: "
+#                 f"{current_qty} -> {new_qty}"
+#             )
+   
+#     def create(self, validated_data):
+
+#         table_data = validated_data.pop(
+#             "MaterialChallanTable",
+#             []
+#         )
+
+#         challan = MaterialChallan.objects.create(
+#             **validated_data
+#         )
+
+#         for item_data in table_data:
+
+#             table_item = MaterialChallanTable.objects.create(
+#                 MaterialChallanDetail=challan,
+#                 **item_data
+#             )
+#             heat_no = (
+#                 table_item.HeatNo or ""
+#             ).strip()
+
+#             qty = self.get_decimal(table_item.Qty )
+#             material_item = (challan.Item or "").strip()
+#             item_code = ""
+#             if material_item:
+#                 item_code = (
+#                     material_item
+#                     .split("-")[0]
+#                     .strip()
+#                 )
+
+#             # Find Jobwork item by item code + heat
+#             grn_items = JobworkInwardChallanTable.objects.filter(
+#                 ItemCode__istartswith=item_code + " |",
+#                 HeatNo__iexact=heat_no
+#             )
+
+#             for grn_item in grn_items:
+
+#                 current_qty = self.get_decimal(
+#                     grn_item.GRNQty
+#                 )
+
+#                 new_qty = max(
+#                     current_qty - qty,
+#                     Decimal("0")
+#                 )
+
+#                 grn_item.GRNQty = str(new_qty)
+
+#                 grn_item.save(
+#                     update_fields=["GRNQty"]
+#                 )
+
+#                 print(
+#                     f"Jobwork GRN {grn_item.id} updated: "
+#                     f"{current_qty} -> {new_qty}"
+#                 )
+
+#         return challan
+
+#     # ---------------------------------------------------------
+#     # UPDATE
+#     # ---------------------------------------------------------
+#     def update(self, instance, validated_data):
+
+#         table_data = validated_data.pop(
+#             "MaterialChallanTable",
+#             []
+#         )
+
+#         # -----------------------------------------------------
+#         # STEP 1
+#         # Restore OLD quantities to Jobwork GRN
+#         # -----------------------------------------------------
+
+#         old_items = MaterialChallanTable.objects.filter(
+#             MaterialChallanDetail=instance
+#         )
+
+#         # Get old parent Item
+#         old_material_item = (
+#             instance.Item or ""
+#         ).strip()
+
+#         old_item_code = ""
+
+#         if old_material_item:
+
+#             old_item_code = (
+#                 old_material_item
+#                 .split("-")[0]
+#                 .strip()
+#             )
+
+#         for old_item in old_items:
+
+#             heat_no = (
+#                 old_item.HeatNo or ""
+#             ).strip()
+
+#             qty = self.get_decimal(
+#                 old_item.Qty
+#             )
+
+#             grn_items = (
+#                 JobworkInwardChallanTable.objects
+#                 .filter(
+#                     ItemCode__istartswith=old_item_code + " |",
+#                     HeatNo__iexact=heat_no
+#                 )
+#             )
+
+#             for grn_item in grn_items:
+
+#                 current_qty = self.get_decimal(
+#                     grn_item.GRNQty
+#                 )
+
+#                 restored_qty = (
+#                     current_qty + qty
+#                 )
+
+#                 grn_item.GRNQty = str(
+#                     restored_qty
+#                 )
+
+#                 grn_item.save(
+#                     update_fields=["GRNQty"]
+#                 )
+
+#                 print(
+#                     f"Jobwork GRN {grn_item.id} restored: "
+#                     f"{current_qty} + {qty} = "
+#                     f"{restored_qty}"
+#                 )
+
+#         # -----------------------------------------------------
+#         # STEP 2
+#         # Delete old MaterialChallanTable rows
+#         # -----------------------------------------------------
+
+#         old_items.delete()
+
+#         # -----------------------------------------------------
+#         # STEP 3
+#         # Update main MaterialChallan
+#         # -----------------------------------------------------
+
+#         for attr, value in validated_data.items():
+
+#             setattr(
+#                 instance,
+#                 attr,
+#                 value
+#             )
+
+#         instance.save()
+
+#         # -----------------------------------------------------
+#         # STEP 4
+#         # Get NEW ItemCode
+#         # -----------------------------------------------------
+
+#         material_item = (
+#             instance.Item or ""
+#         ).strip()
+
+#         item_code = ""
+
+#         if material_item:
+
+#             item_code = (
+#                 material_item
+#                 .split("-")[0]
+#                 .strip()
+#             )
+
+#         # -----------------------------------------------------
+#         # STEP 5
+#         # Create new rows and subtract from Jobwork GRN
+#         # -----------------------------------------------------
+
+#         for item_data in table_data:
+
+#             table_item = (
+#                 MaterialChallanTable.objects.create(
+#                     MaterialChallanDetail=instance,
+#                     **item_data
+#                 )
+#             )
+
+#             heat_no = (
+#                 table_item.HeatNo or ""
+#             ).strip()
+
+#             qty = self.get_decimal(
+#                 table_item.Qty
+#             )
+
+#             grn_items = (
+#                 JobworkInwardChallanTable.objects
+#                 .filter(
+#                     ItemCode__istartswith=item_code + " |",
+#                     HeatNo__iexact=heat_no
+#                 )
+#             )
+
+#             for grn_item in grn_items:
+
+#                 current_qty = self.get_decimal(
+#                     grn_item.GRNQty
+#                 )
+
+#                 new_qty = max(
+#                     current_qty - qty,
+#                     Decimal("0")
+#                 )
+
+#                 grn_item.GRNQty = str(
+#                     new_qty
+#                 )
+
+#                 grn_item.save(
+#                     update_fields=["GRNQty"]
+#                 )
+
+#                 print(
+#                     f"Jobwork GRN {grn_item.id} updated: "
+#                     f"{current_qty} -> {new_qty}"
+#                 )
+
+#         return instance
+
+
+
+
+
+# class OpeningStockRMSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = OpeningStockRM
+#         fields = "__all__"
+
+
+
+## new for openingRmStock
+from .services.rm_stock import add_stock
+class OpeningStockRMSerializer(
+    serializers.ModelSerializer
+):
+
+    class Meta:
+        model = OpeningStockRM
+        fields = "__all__"
+
+    def create(self, validated_data):
+
+        opening_stock = (
+            OpeningStockRM.objects.create(
+                **validated_data
+            )
+        )
+
+        add_stock(
+            item_code=opening_stock.item_code,
+            heat_no=opening_stock.heat_no,
+            qty=opening_stock.qty,
+            source="OPENING",
+            source_id=opening_stock.id,
+            source_table="OpeningStockRM",
+            remark=opening_stock.remark
+        )
+
+        return opening_stock
+
+
+
 
 from rest_framework import serializers
+from django.db import transaction
 from decimal import Decimal, InvalidOperation
 
 from .models import (
     MaterialChallan,
     MaterialChallanTable,
-    JobworkInwardChallanTable,
+)
+
+from .services.rm_stock import (
+    extract_item_code,
+    deduct_stock,
+    restore_material_issue,
 )
 
 
@@ -1117,16 +1621,16 @@ class MaterialChallanTableSerializer(serializers.ModelSerializer):
     class Meta:
         model = MaterialChallanTable
         fields = [
-            'ItemDescription',
-            'Stock',
-            'HeatNo',
-            'Qty',
-            'Machine',
-            'NatureOfWork',
-            'MrnNo',
-            'CoilNo',
-            'Employee',
-            'Dept'
+            "ItemDescription",
+            "Stock",
+            "HeatNo",
+            "Qty",
+            "Machine",
+            "NatureOfWork",
+            "MrnNo",
+            "CoilNo",
+            "Employee",
+            "Dept",
         ]
 
 
@@ -1138,70 +1642,38 @@ class MaterialChallanSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MaterialChallan
-        fields = '__all__'
+        fields = "__all__"
 
     # ---------------------------------------------------------
-    # Helper: Convert quantity safely
+    # Decimal helper
     # ---------------------------------------------------------
+
     def get_decimal(self, value):
 
         try:
             return Decimal(str(value or 0))
-        except (InvalidOperation, ValueError, TypeError):
+
+        except (
+            InvalidOperation,
+            ValueError,
+            TypeError
+        ):
             return Decimal("0")
-     # Helper: Update Jobwork GRN Qty
-   
-    def update_jobwork_grn_qty(
-        self,
-        item_code,
-        heat_no,
-        qty,
-        operation="subtract"
-    ):
 
-        item_code = (item_code or "").strip()
-        heat_no = (heat_no or "").strip()
+    # ---------------------------------------------------------
+    # Get Item Code
+    # ---------------------------------------------------------
 
-        if not item_code or not heat_no:
-            return
+    def get_item_code(self, material_item):
 
-        # Match ItemCode + HeatNo
-        grn_items = JobworkInwardChallanTable.objects.filter(
-            ItemCode__iexact=item_code,
-            HeatNo__iexact=heat_no
+        return extract_item_code(
+            material_item
         )
 
-        for grn_item in grn_items:
-
-            current_qty = self.get_decimal(
-                grn_item.GRNQty
-            )
-
-            qty = self.get_decimal(qty)
-
-            if operation == "subtract":
-
-                new_qty = max(
-                    current_qty - qty,
-                    Decimal("0")
-                )
-
-            else:
-
-                # restore quantity
-                new_qty = current_qty + qty
-
-            grn_item.GRNQty = str(new_qty)
-
-            grn_item.save(
-                update_fields=["GRNQty"]
-            )
-
-            print(
-                f"Jobwork GRN {grn_item.id}: "
-                f"{current_qty} -> {new_qty}"
-            )
-   
+    # =========================================================
+    # CREATE
+    # =========================================================
+    @transaction.atomic
     def create(self, validated_data):
 
         table_data = validated_data.pop(
@@ -1213,59 +1685,54 @@ class MaterialChallanSerializer(serializers.ModelSerializer):
             **validated_data
         )
 
+        # -----------------------------------------
+        # Get Item Code
+        # -----------------------------------------
+
+        item = (challan.Item or "").strip()
+
+        item_code = extract_item_code(item)
+
+        # -----------------------------------------
+        # Create table rows + deduct stock
+        # -----------------------------------------
+
         for item_data in table_data:
 
             table_item = MaterialChallanTable.objects.create(
                 MaterialChallanDetail=challan,
                 **item_data
             )
+
             heat_no = (
-                table_item.HeatNo or ""
+                item_data.get("HeatNo") or ""
             ).strip()
 
-            qty = self.get_decimal(table_item.Qty )
-            material_item = (challan.Item or "").strip()
-            item_code = ""
-            if material_item:
-                item_code = (
-                    material_item
-                    .split("-")[0]
-                    .strip()
-                )
-
-            # Find Jobwork item by item code + heat
-            grn_items = JobworkInwardChallanTable.objects.filter(
-                ItemCode__istartswith=item_code + " |",
-                HeatNo__iexact=heat_no
+            qty = self.get_decimal(
+                item_data.get("Qty")
             )
 
-            for grn_item in grn_items:
+            # -------------------------------------
+            # Deduct from RM Stock
+            # -------------------------------------
 
-                current_qty = self.get_decimal(
-                    grn_item.GRNQty
-                )
-
-                new_qty = max(
-                    current_qty - qty,
-                    Decimal("0")
-                )
-
-                grn_item.GRNQty = str(new_qty)
-
-                grn_item.save(
-                    update_fields=["GRNQty"]
-                )
-
-                print(
-                    f"Jobwork GRN {grn_item.id} updated: "
-                    f"{current_qty} -> {new_qty}"
-                )
+            deduct_stock(
+                item_code=item_code,
+                heat_no=heat_no,
+                qty=qty,
+                material_challan=challan,
+                material_challan_table=table_item,
+                remark="Material Issue"
+            )
 
         return challan
+    
 
-    # ---------------------------------------------------------
+    # =========================================================
     # UPDATE
-    # ---------------------------------------------------------
+    # =========================================================
+
+    @transaction.atomic
     def update(self, instance, validated_data):
 
         table_data = validated_data.pop(
@@ -1273,83 +1740,26 @@ class MaterialChallanSerializer(serializers.ModelSerializer):
             []
         )
 
-        # -----------------------------------------------------
+        # =====================================================
         # STEP 1
-        # Restore OLD quantities to Jobwork GRN
-        # -----------------------------------------------------
+        # RESTORE OLD MATERIAL ISSUE
+        # =====================================================
 
-        old_items = MaterialChallanTable.objects.filter(
-            MaterialChallanDetail=instance
-        )
+        restore_material_issue(instance)
 
-        # Get old parent Item
-        old_material_item = (
-            instance.Item or ""
-        ).strip()
-
-        old_item_code = ""
-
-        if old_material_item:
-
-            old_item_code = (
-                old_material_item
-                .split("-")[0]
-                .strip()
-            )
-
-        for old_item in old_items:
-
-            heat_no = (
-                old_item.HeatNo or ""
-            ).strip()
-
-            qty = self.get_decimal(
-                old_item.Qty
-            )
-
-            grn_items = (
-                JobworkInwardChallanTable.objects
-                .filter(
-                    ItemCode__istartswith=old_item_code + " |",
-                    HeatNo__iexact=heat_no
-                )
-            )
-
-            for grn_item in grn_items:
-
-                current_qty = self.get_decimal(
-                    grn_item.GRNQty
-                )
-
-                restored_qty = (
-                    current_qty + qty
-                )
-
-                grn_item.GRNQty = str(
-                    restored_qty
-                )
-
-                grn_item.save(
-                    update_fields=["GRNQty"]
-                )
-
-                print(
-                    f"Jobwork GRN {grn_item.id} restored: "
-                    f"{current_qty} + {qty} = "
-                    f"{restored_qty}"
-                )
-
-        # -----------------------------------------------------
+        # =====================================================
         # STEP 2
-        # Delete old MaterialChallanTable rows
-        # -----------------------------------------------------
+        # DELETE OLD TABLE ROWS
+        # =====================================================
 
-        old_items.delete()
+        MaterialChallanTable.objects.filter(
+            MaterialChallanDetail=instance
+        ).delete()
 
-        # -----------------------------------------------------
+        # =====================================================
         # STEP 3
-        # Update main MaterialChallan
-        # -----------------------------------------------------
+        # UPDATE MAIN CHALLAN
+        # =====================================================
 
         for attr, value in validated_data.items():
 
@@ -1361,86 +1771,49 @@ class MaterialChallanSerializer(serializers.ModelSerializer):
 
         instance.save()
 
-        # -----------------------------------------------------
+        # =====================================================
         # STEP 4
-        # Get NEW ItemCode
-        # -----------------------------------------------------
+        # GET NEW ITEM CODE
+        # =====================================================
 
-        material_item = (
+        item = (
             instance.Item or ""
         ).strip()
 
-        item_code = ""
+        item_code = extract_item_code(item)
 
-        if material_item:
-
-            item_code = (
-                material_item
-                .split("-")[0]
-                .strip()
-            )
-
-        # -----------------------------------------------------
+        # =====================================================
         # STEP 5
-        # Create new rows and subtract from Jobwork GRN
-        # -----------------------------------------------------
+        # CREATE NEW TABLE ROWS
+        # AND DEDUCT NEW STOCK
+        # =====================================================
 
         for item_data in table_data:
 
-            table_item = (
-                MaterialChallanTable.objects.create(
-                    MaterialChallanDetail=instance,
-                    **item_data
-                )
+            table_item = MaterialChallanTable.objects.create(
+                MaterialChallanDetail=instance,
+                **item_data
             )
 
             heat_no = (
-                table_item.HeatNo or ""
+                item_data.get("HeatNo") or ""
             ).strip()
 
             qty = self.get_decimal(
-                table_item.Qty
+                item_data.get("Qty")
             )
 
-            grn_items = (
-                JobworkInwardChallanTable.objects
-                .filter(
-                    ItemCode__istartswith=item_code + " |",
-                    HeatNo__iexact=heat_no
-                )
+            # ---------------------------------------------
+            # Deduct using FIFO stock system
+            # ---------------------------------------------
+
+            deduct_stock(
+                item_code=item_code,
+                heat_no=heat_no,
+                qty=qty,
+                material_challan=instance,
+                material_challan_table=table_item,
+                remark="Material Issue Updated"
             )
-
-            for grn_item in grn_items:
-
-                current_qty = self.get_decimal(
-                    grn_item.GRNQty
-                )
-
-                new_qty = max(
-                    current_qty - qty,
-                    Decimal("0")
-                )
-
-                grn_item.GRNQty = str(
-                    new_qty
-                )
-
-                grn_item.save(
-                    update_fields=["GRNQty"]
-                )
-
-                print(
-                    f"Jobwork GRN {grn_item.id} updated: "
-                    f"{current_qty} -> {new_qty}"
-                )
 
         return instance
-
-
-
-
-
-class OpeningStockRMSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = OpeningStockRM
-        fields = "__all__"

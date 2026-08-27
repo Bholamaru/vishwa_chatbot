@@ -561,6 +561,30 @@ class MaterialChallanView(viewsets.ModelViewSet):
     queryset = MaterialChallan.objects.all()
     serializer_class = MaterialChallanSerializer
 
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+
+        instance = self.get_object()
+
+        # -----------------------------------------
+        # Restore stock
+        # -----------------------------------------
+
+        restore_material_issue(instance)
+
+        # -----------------------------------------
+        # Delete Material Challan
+        # -----------------------------------------
+
+        self.perform_destroy(instance)
+
+        return Response(
+            {
+                "message": "Material Issue deleted successfully and stock restored."
+            },
+            status=200
+        )
+
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -4898,115 +4922,414 @@ from rest_framework import status
 from .models import JobworkInwardChallanTable
 
 
+# @api_view(["GET"])
+# def rm_jobwork_item(request):
+
+#     try:
+#         # Optional search parameter
+#         search_item_code = request.GET.get("item_code", "").strip()
+
+#         # Base queryset - only RM items
+#         queryset = JobworkInwardChallanTable.objects.filter(
+#             ItemCode__istartswith="RM"
+#         )
+
+#         # If item_code is provided, filter particular item
+#         if search_item_code:
+#             queryset = queryset.filter(
+#                 ItemCode__istartswith=search_item_code
+#             )
+
+#         items = queryset.values(
+#             "ItemCode",
+#             "HeatNo",
+#             "GRNQty"
+#         )
+
+#         result = {}
+
+#         for item in items:
+
+#             full_item_code = item["ItemCode"] or ""
+
+#             # Example:
+#             # RMRM1002 | RMBPA00209 | CAP OIL LOCK
+
+#             parts = [
+#                 part.strip()
+#                 for part in full_item_code.split("|")
+#             ]
+
+#             item_code = parts[0] if len(parts) > 0 else ""
+#             item_no = parts[1] if len(parts) > 1 else ""
+#             description = parts[2] if len(parts) > 2 else ""
+
+#             try:
+#                 grn_qty = float(item["GRNQty"] or 0)
+#             except (ValueError, TypeError):
+#                 grn_qty = 0
+
+#             if item_code not in result:
+
+#                 result[item_code] = {
+#                     "item_code": item_code,
+#                     "item_no": item_no,
+#                     "description": description,
+#                     "stock": 0,
+#                     "variants": []
+#                 }
+
+#             # Total stock
+#             result[item_code]["stock"] += grn_qty
+
+#             heat_no = item["HeatNo"] or ""
+
+#             # Same HeatNo -> combine GRNQty
+#             existing_variant = next(
+#                 (
+#                     variant
+#                     for variant in result[item_code]["variants"]
+#                     if variant["HeatNo"] == heat_no
+#                 ),
+#                 None
+#             )
+
+#             if existing_variant:
+#                 existing_variant["GRNQty"] += grn_qty
+#             else:
+#                 result[item_code]["variants"].append({
+#                     "HeatNo": heat_no,
+#                     "GRNQty": grn_qty
+#                 })
+
+#         # Convert whole numbers from 200.0 -> 200
+#         data = []
+
+#         for item in result.values():
+
+#             if item["stock"].is_integer():
+#                 item["stock"] = int(item["stock"])
+
+#             for variant in item["variants"]:
+#                 if variant["GRNQty"].is_integer():
+#                     variant["GRNQty"] = int(
+#                         variant["GRNQty"]
+#                     )
+
+#             data.append(item)
+
+#         return Response({
+#             "status": True,
+#             "count": len(data),
+#             "data": data
+#         })
+
+#     except Exception as e:
+
+#         return Response(
+#             {
+#                 "status": False,
+#                 "message": str(e)
+#             },
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#         )
+
+
+from decimal import Decimal, InvalidOperation
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import (
+    RMStock,
+    JobworkInwardChallanTable,
+)
+
+
+# =========================================================
+# Helper: Decimal
+# =========================================================
+
+def get_decimal(value):
+
+    try:
+        return Decimal(str(value or 0))
+
+    except (
+        InvalidOperation,
+        ValueError,
+        TypeError
+    ):
+        return Decimal("0")
+
+
+# =========================================================
+# Helper: Format number
+# =========================================================
+
+def format_number(value):
+
+    value = get_decimal(value)
+
+    if value == value.to_integral_value():
+        return int(value)
+
+    return float(value)
+
+
+# =========================================================
+# RM STOCK API
+# =========================================================
+
 @api_view(["GET"])
 def rm_jobwork_item(request):
 
     try:
-        # Optional search parameter
-        search_item_code = request.GET.get("item_code", "").strip()
 
-        # Base queryset - only RM items
-        queryset = JobworkInwardChallanTable.objects.filter(
-            ItemCode__istartswith="RM"
+        # =================================================
+        # 1. Search item code
+        # =================================================
+
+        search_item_code = (
+            request.GET.get("item_code", "")
+            .strip()
         )
 
-        # If item_code is provided, filter particular item
+
+        # =================================================
+        # 2. Get RM Stock
+        # =================================================
+
+        stock_queryset = RMStock.objects.all()
+
+
         if search_item_code:
-            queryset = queryset.filter(
-                ItemCode__istartswith=search_item_code
+
+            stock_queryset = stock_queryset.filter(
+                item_code__istartswith=search_item_code
             )
 
-        items = queryset.values(
-            "ItemCode",
-            "HeatNo",
-            "GRNQty"
+
+        stocks = stock_queryset.values(
+            "item_code",
+            "heat_no",
+            "qty"
         )
 
-        result = {}
 
-        for item in items:
+        # =================================================
+        # 3. Get item information
+        # =================================================
+        #
+        # JobworkInwardChallanTable.ItemCode example:
+        #
+        # RM1006 | RMCoil | CoilRaw
+        #
+        # RM1007 | TEST | DEMO
+        #
+        # =================================================
 
-            full_item_code = item["ItemCode"] or ""
+        item_master = {}
 
-            # Example:
-            # RMRM1002 | RMBPA00209 | CAP OIL LOCK
+
+        jobwork_items = (
+            JobworkInwardChallanTable.objects
+            .exclude(ItemCode__isnull=True)
+            .exclude(ItemCode="")
+            .values("ItemCode")
+        )
+
+
+        for job_item in jobwork_items:
+
+            full_item_code = (
+                job_item["ItemCode"] or ""
+            ).strip()
+
 
             parts = [
                 part.strip()
                 for part in full_item_code.split("|")
             ]
 
-            item_code = parts[0] if len(parts) > 0 else ""
-            item_no = parts[1] if len(parts) > 1 else ""
-            description = parts[2] if len(parts) > 2 else ""
 
-            try:
-                grn_qty = float(item["GRNQty"] or 0)
-            except (ValueError, TypeError):
-                grn_qty = 0
+            if not parts:
+                continue
+
+
+            item_code = parts[0]
+
+
+            # ---------------------------------------------
+            # Only keep first information for item
+            # ---------------------------------------------
+
+            if item_code not in item_master:
+
+                item_master[item_code] = {
+
+                    "item_no": (
+                        parts[1]
+                        if len(parts) > 1
+                        else ""
+                    ),
+
+                    "description": (
+                        parts[2]
+                        if len(parts) > 2
+                        else ""
+                    )
+                }
+
+
+        # =================================================
+        # 4. Build result
+        # =================================================
+
+        result = {}
+
+
+        for stock in stocks:
+
+            item_code = (
+                stock["item_code"] or ""
+            ).strip()
+
+
+            heat_no = (
+                stock["heat_no"] or ""
+            ).strip()
+
+
+            stock_qty = get_decimal(
+                stock["qty"]
+            )
+
+
+            # =================================================
+            # Get item_no and description
+            # =================================================
+
+            item_info = item_master.get(
+                item_code,
+                {
+                    "item_no": "",
+                    "description": ""
+                }
+            )
+
+
+            item_no = item_info["item_no"]
+
+            description = item_info["description"]
+
+
+            # =================================================
+            # Create parent item
+            # =================================================
 
             if item_code not in result:
 
                 result[item_code] = {
+
                     "item_code": item_code,
+
                     "item_no": item_no,
+
                     "description": description,
-                    "stock": 0,
+
+                    "stock": Decimal("0"),
+
                     "variants": []
                 }
 
-            # Total stock
-            result[item_code]["stock"] += grn_qty
 
-            heat_no = item["HeatNo"] or ""
+            # =================================================
+            # Add stock
+            # =================================================
 
-            # Same HeatNo -> combine GRNQty
+            result[item_code]["stock"] += stock_qty
+
+
+            # =================================================
+            # Heat-wise stock
+            # =================================================
+
             existing_variant = next(
                 (
                     variant
-                    for variant in result[item_code]["variants"]
+                    for variant
+                    in result[item_code]["variants"]
                     if variant["HeatNo"] == heat_no
                 ),
                 None
             )
 
+
             if existing_variant:
-                existing_variant["GRNQty"] += grn_qty
+
+                existing_variant["GRNQty"] += stock_qty
+
             else:
+
                 result[item_code]["variants"].append({
+
                     "HeatNo": heat_no,
-                    "GRNQty": grn_qty
+
+                    "GRNQty": stock_qty
+
                 })
 
-        # Convert whole numbers from 200.0 -> 200
+
+        # =================================================
+        # 5. Format response
+        # =================================================
+
         data = []
+
 
         for item in result.values():
 
-            if item["stock"].is_integer():
-                item["stock"] = int(item["stock"])
+            item["stock"] = format_number(
+                item["stock"]
+            )
+
 
             for variant in item["variants"]:
-                if variant["GRNQty"].is_integer():
-                    variant["GRNQty"] = int(
-                        variant["GRNQty"]
-                    )
+
+                variant["GRNQty"] = format_number(
+                    variant["GRNQty"]
+                )
+
 
             data.append(item)
 
+
+        # =================================================
+        # 6. Response
+        # =================================================
+
         return Response({
+
             "status": True,
+
             "count": len(data),
+
             "data": data
+
         })
+
 
     except Exception as e:
 
         return Response(
+
             {
                 "status": False,
                 "message": str(e)
             },
+
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -6329,3 +6652,547 @@ class GenerateOpeningStockRMNumber(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+from decimal import Decimal
+
+from django.db.models import Sum
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+
+from .models import (
+    RMStock,
+    RMStockLot,
+    JobworkInwardChallanTable,
+    MaterialChallanTable,
+
+)
+def decimal_value(value):
+    try:
+        return Decimal(str(value or 0))
+    except Exception:
+        return Decimal("0")
+
+def extract_item_code(value):
+
+    value = (value or "").strip()
+
+    if "|" in value:
+        return value.split("|")[0].strip()
+
+    if "-" in value:
+        return value.split("-")[0].strip()
+
+    return value
+from decimal import Decimal, InvalidOperation
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+from .models import (
+    RMStock,
+    
+    MaterialChallan,
+)
+
+
+@api_view(["GET"])
+def get_rm_stock(request):
+
+    # =========================================================
+    # HELPER
+    # =========================================================
+
+    def decimal_value(value):
+
+        try:
+            return Decimal(str(value or 0))
+
+        except (
+            InvalidOperation,
+            ValueError,
+            TypeError
+        ):
+            return Decimal("0")
+
+    # =========================================================
+    # HELPER
+    # Extract item code
+    #
+    # RM1007 - TEST - DEMO
+    #        ↓
+    # RM1007
+    #
+    # RM1007 | TEST | DEMO
+    #        ↓
+    # RM1007
+    # =========================================================
+
+    def extract_item_code(value):
+
+        value = (value or "").strip()
+
+        if "|" in value:
+            return value.split("|")[0].strip()
+
+        if "-" in value:
+            return value.split("-")[0].strip()
+
+        return value
+
+    # =========================================================
+    # HELPER
+    # Extract item no + description
+    #
+    # RM1007 - TEST - DEMO
+    #
+    # item_no     = TEST
+    # description = DEMO
+    # =========================================================
+
+    def extract_item_details(value):
+
+        value = (value or "").strip()
+
+        parts = [
+            part.strip()
+            for part in value.split("-")
+        ]
+
+        item_no = ""
+        description = ""
+
+        if len(parts) >= 2:
+            item_no = parts[1]
+
+        if len(parts) >= 3:
+            description = " - ".join(parts[2:])
+
+        return item_no, description
+
+    # =========================================================
+    # STEP 1
+    # Get current RM stock
+    #
+    # IMPORTANT:
+    # RMStock.qty is the actual AVAILABLE stock.
+    # This already includes:
+    #
+    # Opening Stock
+    # Jobwork GRN
+    # minus Material Issue
+    # =========================================================
+
+    stocks = (
+        RMStock.objects
+        .filter(qty__gt=0)
+        .order_by(
+            "item_code",
+            "heat_no"
+        )
+    )
+
+    # =========================================================
+    # STEP 2
+    # Response dictionary
+    # =========================================================
+
+    items = {}
+
+    # =========================================================
+    # STEP 3
+    # Build stock item + heat variants
+    # =========================================================
+
+    for stock in stocks:
+
+        item_code = (
+            stock.item_code or ""
+        ).strip()
+
+        heat_no = (
+            stock.heat_no or ""
+        ).strip()
+
+        if not item_code:
+            continue
+
+        if not heat_no:
+            continue
+
+        # -----------------------------------------------------
+        # Create item
+        # -----------------------------------------------------
+
+        if item_code not in items:
+
+            items[item_code] = {
+
+                "item_code": item_code,
+
+                "item_no": "",
+
+                "description": "",
+
+                "stock": Decimal("0"),
+
+                "bar": Decimal("0"),
+
+                "wire_rod": Decimal("0"),
+
+                "ShopFloor": Decimal("0"),
+
+                "variants": {}
+            }
+
+        # -----------------------------------------------------
+        # Add aggregate stock
+        # -----------------------------------------------------
+
+        items[item_code]["stock"] += (
+            decimal_value(stock.qty)
+        )
+
+        # -----------------------------------------------------
+        # Create heat variant
+        # -----------------------------------------------------
+
+        if heat_no not in (
+            items[item_code]["variants"]
+        ):
+
+            items[item_code]["variants"][heat_no] = {
+
+                "HeatNo": heat_no,
+
+                "GRNQty": Decimal("0"),
+
+                "bar": Decimal("0"),
+
+                "wire_rod": Decimal("0")
+            }
+
+        # -----------------------------------------------------
+        # Current available stock
+        # -----------------------------------------------------
+
+        items[item_code]["variants"][heat_no][
+            "GRNQty"
+        ] += decimal_value(stock.qty)
+
+    # =========================================================
+    # STEP 4
+    # PRODUCTION ENTRY
+    #
+    # IMPORTANT LOGIC:
+    #
+    # ProductionEntry.raw_material
+    #             ↓
+    #        RM item code
+    #
+    # ProductionEntry.lot_no
+    #             ↓
+    #        Heat number
+    #
+    # ProductionEntry.bar_value
+    #             ↓
+    #           bar
+    #
+    # ProductionEntry.wier_rod_value
+    #             ↓
+    #         wire_rod
+    #
+    # Example:
+    #
+    # raw_material = RM1007
+    # lot_no = SHIV10|100
+    #
+    # HeatNo = SHIV10
+    # =========================================================
+
+    production_entries = (
+        ProductionEntry.objects
+        .all()
+    )
+
+    for production in production_entries:
+
+        # -----------------------------------------------------
+        # RM ITEM CODE
+        # -----------------------------------------------------
+
+        item_code = (
+            production.raw_material or ""
+        ).strip()
+
+        if not item_code:
+            continue
+
+        # -----------------------------------------------------
+        # LOT / HEAT
+        #
+        # Example:
+        # SHIV10|100
+        #
+        # HeatNo = SHIV10
+        # -----------------------------------------------------
+
+        lot_no = (
+            production.lot_no or ""
+        ).strip()
+
+        if not lot_no:
+            continue
+
+        if "|" in lot_no:
+
+            heat_no = (
+                lot_no
+                .split("|")[0]
+                .strip()
+            )
+
+        else:
+
+            heat_no = lot_no
+
+        if not heat_no:
+            continue
+
+        # -----------------------------------------------------
+        # BAR
+        # -----------------------------------------------------
+
+        bar = decimal_value(
+            production.bar_value
+        )
+
+        # -----------------------------------------------------
+        # WIRE ROD
+        #
+        # Your actual field is:
+        #
+        # wier_rod_value
+        #
+        # Keep this spelling because it matches your model.
+        # -----------------------------------------------------
+
+        wire_rod = decimal_value(
+            production.wier_rod_value
+        )
+
+        # -----------------------------------------------------
+        # Only process if RM stock exists
+        # -----------------------------------------------------
+
+        if item_code not in items:
+            continue
+
+        # -----------------------------------------------------
+        # Create heat if it doesn't exist
+        # -----------------------------------------------------
+
+        if heat_no not in (
+            items[item_code]["variants"]
+        ):
+
+            items[item_code]["variants"][heat_no] = {
+
+                "HeatNo": heat_no,
+
+                "GRNQty": Decimal("0"),
+
+                "bar": Decimal("0"),
+
+                "wire_rod": Decimal("0")
+            }
+
+        # -----------------------------------------------------
+        # ADD BAR TO HEAT
+        # -----------------------------------------------------
+
+        items[item_code]["variants"][heat_no][
+            "bar"
+        ] += bar
+
+        # -----------------------------------------------------
+        # ADD WIRE ROD TO HEAT
+        # -----------------------------------------------------
+
+        items[item_code]["variants"][heat_no][
+            "wire_rod"
+        ] += wire_rod
+
+        # -----------------------------------------------------
+        # ADD BAR TO ITEM
+        # -----------------------------------------------------
+
+        items[item_code]["bar"] += bar
+
+        # -----------------------------------------------------
+        # ADD WIRE ROD TO ITEM
+        # -----------------------------------------------------
+
+        items[item_code]["wire_rod"] += wire_rod
+
+    # =========================================================
+    # STEP 5
+    # MATERIAL CHALLAN
+    #
+    # ShopFloor comes from MaterialChallan.
+    #
+    # Item:
+    #
+    # RM1007 - TEST - DEMO
+    #
+    # Qty:
+    #
+    # MaterialChallanTable.Qty
+    # =========================================================
+
+    material_challans = (
+        MaterialChallan.objects
+        .prefetch_related(
+            "MaterialChallanTable"
+        )
+        .all()
+    )
+
+    for challan in material_challans:
+
+        material_item = (
+            challan.Item or ""
+        ).strip()
+
+        if not material_item:
+            continue
+
+        item_code = extract_item_code(
+            material_item
+        )
+
+        if not item_code:
+            continue
+
+        if item_code not in items:
+            continue
+
+        # -----------------------------------------------------
+        # ShopFloor quantity
+        # -----------------------------------------------------
+
+        for material_item_row in (
+            challan.MaterialChallanTable.all()
+        ):
+
+            qty = decimal_value(
+                material_item_row.Qty
+            )
+
+            items[item_code]["ShopFloor"] += qty
+
+    # =========================================================
+    # STEP 6
+    # ITEM NO + DESCRIPTION
+    # =========================================================
+
+    for item_code, item_data in items.items():
+
+        challan = (
+            MaterialChallan.objects
+            .filter(
+                Item__istartswith=item_code
+            )
+            .exclude(
+                Item__isnull=True
+            )
+            .exclude(
+                Item=""
+            )
+            .first()
+        )
+
+        if challan:
+
+            item_no, description = (
+                extract_item_details(
+                    challan.Item
+                )
+            )
+
+            item_data["item_no"] = item_no
+
+            item_data["description"] = description
+
+    # =========================================================
+    # STEP 7
+    # FINAL RESPONSE
+    # =========================================================
+
+    response_data = []
+
+    for item_code, item_data in items.items():
+
+        variants = []
+
+        for (
+            heat_no,
+            variant
+        ) in item_data["variants"].items():
+
+            variants.append({
+
+                "HeatNo": variant["HeatNo"],
+
+                "GRNQty": float(
+                    variant["GRNQty"]
+                ),
+
+                "bar": float(
+                    variant["bar"]
+                ),
+
+                "wire_rod": float(
+                    variant["wire_rod"]
+                )
+            })
+
+        response_data.append({
+
+            "item_code":
+                item_data["item_code"],
+
+            "item_no":
+                item_data["item_no"],
+
+            "description":
+                item_data["description"],
+
+            "stock":
+                float(item_data["stock"]),
+
+            "bar":
+                float(item_data["bar"]),
+
+            "wire_rod":
+                float(item_data["wire_rod"]),
+
+            "ShopFloor":
+                float(item_data["ShopFloor"]),
+
+            "variants":
+                variants
+        })
+
+    # =========================================================
+    # STEP 8
+    # RESPONSE
+    # =========================================================
+
+    return Response({
+
+        "status": True,
+
+        "count": len(response_data),
+
+        "data": response_data
+    })

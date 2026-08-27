@@ -745,3 +745,249 @@ class OpeningStockRM(models.Model):
     qty = models.CharField(max_length=200,blank=True,null=True)
     rate = models.CharField(max_length=200,blank=True,null=True)
     remark = models.TextField(blank=True,null=True)
+
+
+
+
+
+
+### new logic for RMStock and OpeningStockRM
+
+class RMStock(models.Model):
+    item_code = models.CharField(
+        max_length=255
+    )
+
+    heat_no = models.CharField(
+        max_length=255
+    )
+
+    qty = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        default=0
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["item_code", "heat_no"],
+                name="unique_rm_item_heat"
+            )
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["item_code", "heat_no"]
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.item_code} - "
+            f"{self.heat_no} - "
+            f"{self.qty}"
+        )
+
+
+class RMStockLot(models.Model):
+
+    SOURCE_CHOICES = (
+        ("JOBWORK", "Jobwork GRN"),
+        ("OPENING", "Opening Stock"),
+    )
+
+    rm_stock = models.ForeignKey(
+        RMStock,
+        related_name="lots",
+        on_delete=models.CASCADE
+    )
+
+    item_code = models.CharField(
+        max_length=255
+    )
+
+    heat_no = models.CharField(
+        max_length=255
+    )
+
+    qty = models.DecimalField(
+        max_digits=20,
+        decimal_places=2,
+        default=0
+    )
+
+    source = models.CharField(
+        max_length=50,
+        choices=SOURCE_CHOICES
+    )
+
+    source_id = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    source_table = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=[
+                    "item_code",
+                    "heat_no"
+                ]
+            ),
+            models.Index(
+                fields=[
+                    "source",
+                    "source_id"
+                ]
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.item_code} - "
+            f"{self.heat_no} - "
+            f"{self.qty} - "
+            f"{self.source}"
+        )
+
+class RMStockTransaction(models.Model):
+
+    TRANSACTION_TYPES = (
+        ("JOBWORK_GRN", "Jobwork GRN"),
+        ("OPENING", "Opening Stock"),
+        ("MATERIAL_ISSUE", "Material Issue"),
+        ("MATERIAL_ISSUE_RESTORE", "Material Issue Restore"),
+        ("ADJUSTMENT", "Adjustment"),
+    )
+
+    item_code = models.CharField(
+        max_length=255
+    )
+
+    heat_no = models.CharField(
+        max_length=255
+    )
+
+    transaction_type = models.CharField(
+        max_length=50,
+        choices=TRANSACTION_TYPES
+    )
+
+    qty = models.DecimalField(
+        max_digits=20,
+        decimal_places=2
+    )
+
+    reference_id = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    reference_table = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
+
+    balance_after = models.DecimalField(
+        max_digits=20,
+        decimal_places=2
+    )
+
+    remark = models.TextField(
+        null=True,
+        blank=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=[
+                    "item_code",
+                    "heat_no"
+                ]
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.item_code} - "
+            f"{self.heat_no} - "
+            f"{self.transaction_type}"
+        )
+
+class MaterialIssueAllocation(models.Model):
+
+    material_challan = models.ForeignKey(
+        MaterialChallan,
+        related_name="stock_allocations",
+        on_delete=models.CASCADE
+    )
+
+    material_challan_table = models.ForeignKey(
+        MaterialChallanTable,
+        related_name="stock_allocations",
+        on_delete=models.CASCADE
+    )
+
+    stock_lot = models.ForeignKey(
+        RMStockLot,
+        related_name="material_allocations",
+        on_delete=models.PROTECT
+    )
+
+    item_code = models.CharField(
+        max_length=255
+    )
+
+    heat_no = models.CharField(
+        max_length=255
+    )
+
+    qty = models.DecimalField(
+        max_digits=20,
+        decimal_places=2
+    )
+
+    source = models.CharField(
+        max_length=50
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    def __str__(self):
+        return (
+            f"{self.item_code} - "
+            f"{self.heat_no} - "
+            f"{self.qty} - "
+            f"{self.source}"
+        )
