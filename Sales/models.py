@@ -192,6 +192,34 @@ class Invoice(models.Model):
     d_c_Date=models.DateField(blank=True,null=True)
     delivery_terms=models.TextField(max_length=3000,blank=True,null=True)
 
+    #new
+    irn = models.CharField(max_length=100, blank=True, null=True)
+    ack_no = models.CharField(max_length=100, blank=True, null=True)
+    ack_date = models.CharField(max_length=100, blank=True, null=True)
+    signed_qr_code = models.TextField(blank=True, null=True)
+    signed_invoice = models.TextField(blank=True, null=True)
+    irn_status = models.CharField(max_length=20, blank=True, null=True)  # ACT / CNL
+    irn_cancel_reason = models.CharField(max_length=100, blank=True, null=True)
+    irn_cancel_date = models.CharField(max_length=100, blank=True, null=True)
+    irn_error = models.TextField(blank=True, null=True)
+
+    # --- Buyer / GST details, needed for e-invoice generation ---
+    buyer_gstin = models.CharField(max_length=15, blank=True, null=True)
+    buyer_legal_name = models.CharField(max_length=200, blank=True, null=True)
+    buyer_addr1 = models.CharField(max_length=100, blank=True, null=True)
+    buyer_addr2 = models.CharField(max_length=100, blank=True, null=True)
+    buyer_location = models.CharField(max_length=100, blank=True, null=True)
+    buyer_pincode = models.CharField(max_length=6, blank=True, null=True)
+    buyer_state_code = models.CharField(max_length=2, blank=True, null=True)   # e.g. "23" for MP, "27" for Maharashtra
+    buyer_pos = models.CharField(max_length=2, blank=True, null=True)       
+
+
+# --- E-way bill fields ---
+    transporter_gstin = models.CharField(max_length=15, blank=True, null=True)
+    trans_doc_no = models.CharField(max_length=50, blank=True, null=True)
+    trans_doc_date = models.DateField(blank=True, null=True)
+    trans_distance_km = models.IntegerField(blank=True, null=True, default=0)
+    vehicle_type = models.CharField(max_length=1, blank=True, null=True, default="R")
 
 class InvoiceItemdetails(models.Model):
     invoice = models.ForeignKey(Invoice, related_name='items', on_delete=models.CASCADE)

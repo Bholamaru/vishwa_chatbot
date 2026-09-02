@@ -544,23 +544,68 @@ class ItemFullReport(APIView):
 
 
 
+# from .serializers import *
+# from .models import *
+# class InvoiceViewSet(viewsets.ModelViewSet):
+#     queryset = Invoice.objects.all()
+#     serializer_class = InvoiceSerializer
+
+    
+
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+
+#         if not serializer.is_valid():
+#             print("❌ VALIDATION ERRORS →", serializer.errors)
+#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+#         self.perform_create(serializer)
+#         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
 from .serializers import *
 from .models import *
+from .utils import fill_invoice_buyer_details
+
+
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
 
-    
-
     def create(self, request, *args, **kwargs):
+
         serializer = self.get_serializer(data=request.data)
 
         if not serializer.is_valid():
             print("❌ VALIDATION ERRORS →", serializer.errors)
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        # Create Invoice
         self.perform_create(serializer)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+        # Get created Invoice instance
+        invoice = serializer.instance
+
+        # Fill buyer details from Item
+        fill_invoice_buyer_details(invoice)
+
+        # Refresh object so response contains updated values
+        invoice.refresh_from_db()
+
+        # Return updated invoice
+        response_serializer = self.get_serializer(invoice)
+
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+
+
 
 
 class NewsalesOrederViewSet(viewsets.ModelViewSet):
@@ -3017,3 +3062,271 @@ class HeatAPIView(APIView):
             response,
             status=status.HTTP_200_OK
         )
+
+
+
+
+
+"""
+Sales/einvoice/views.py
+
+DRF API views exposing the e-invoice service functions to your frontend.
+"""
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status as http_status
+
+from Sales.models import Invoice
+from Sales.einvoice.services.generate_irn import (
+    generate_irn,
+    save_irn_to_invoice,
+    EInvoiceGenerationError,
+)
+from Sales.einvoice.services.auth import EInvoiceAuthError
+
+
+class GenerateIRNView(APIView):
+    """
+    POST /api/einvoice/generate-irn/<invoice_id>/
+
+    Generates an IRN for the given invoice, saves the result, and
+    returns it. If the invoice already has an IRN, refuses to
+    regenerate (the portal doesn't allow duplicate IRNs for the same
+    document number anyway).
+    """
+
+    def post(self, request, invoice_id):
+        try:
+            invoice = Invoice.objects.get(id=invoice_id)
+        except Invoice.DoesNotExist:
+            return Response(
+                {"error": f"Invoice {invoice_id} not found."},
+                status=http_status.HTTP_404_NOT_FOUND,
+            )
+
+        if invoice.irn:
+            return Response(
+                {
+                    "error": "This invoice already has an IRN.",
+                    "irn": invoice.irn,
+                    "irn_status": invoice.irn_status,
+                },
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            response_data = generate_irn(invoice)
+        except (EInvoiceGenerationError, EInvoiceAuthError) as exc:
+            invoice.irn_error = str(exc)
+            invoice.save(update_fields=["irn_error"])
+            return Response(
+                {"error": str(exc)},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        save_irn_to_invoice(invoice, response_data)
+
+        return Response({
+            "irn": invoice.irn,
+            "ack_no": invoice.ack_no,
+            "ack_date": invoice.ack_date,
+            "irn_status": invoice.irn_status,
+            "signed_qr_code": invoice.signed_qr_code,
+            # signed_invoice omitted here (large JWT string) — add if
+            # your frontend actually needs to render/verify it directly.
+        }, status=http_status.HTTP_200_OK)
+
+
+class EInvoiceStatusView(APIView):
+    """
+    GET /api/einvoice/status/<invoice_id>/
+
+    Returns the currently stored e-invoice status for an invoice,
+    without calling the external API — just reads what's already saved.
+    """
+
+    def get(self, request, invoice_id):
+        try:
+            invoice = Invoice.objects.get(id=invoice_id)
+        except Invoice.DoesNotExist:
+            return Response(
+                {"error": f"Invoice {invoice_id} not found."},
+                status=http_status.HTTP_404_NOT_FOUND,
+            )
+
+        return Response({
+            "invoice_id": invoice.id,
+            "invoice_no": invoice.invoice_no,
+            "irn": invoice.irn,
+            "ack_no": invoice.ack_no,
+            "ack_date": invoice.ack_date,
+            "irn_status": invoice.irn_status,
+            "irn_error": invoice.irn_error,
+        }, status=http_status.HTTP_200_OK)
+
+
+
+"""
+Add this to your existing Sales/views.py (alongside GenerateIRNView).
+"""
+
+from Sales.einvoice.services.generate_ewaybill import (
+    generate_ewaybill,
+    save_ewaybill_to_invoice,
+    EWayBillGenerationError,
+)
+
+
+class GenerateEWayBillView(APIView):
+    """
+    POST /api/einvoice/generate-ewaybill/<invoice_id>/
+
+    Generates an e-way bill for an invoice that already has an IRN.
+    No request body needed — everything comes from the Invoice row.
+    """
+
+    def post(self, request, invoice_id):
+        try:
+            invoice = Invoice.objects.get(id=invoice_id)
+        except Invoice.DoesNotExist:
+            return Response(
+                {"error": f"Invoice {invoice_id} not found."},
+                status=http_status.HTTP_404_NOT_FOUND,
+            )
+
+        if invoice.Eway_bill_no:
+            return Response(
+                {
+                    "error": "This invoice already has an e-way bill.",
+                    "eway_bill_no": invoice.Eway_bill_no,
+                },
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            response_data = generate_ewaybill(invoice)
+        except (ValueError, EWayBillGenerationError) as exc:
+            return Response(
+                {"error": str(exc)},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        save_ewaybill_to_invoice(invoice, response_data)
+
+        return Response({
+            "eway_bill_no": invoice.Eway_bill_no,
+            "eway_bill_date": invoice.Eway_bill_Date,
+        }, status=http_status.HTTP_200_OK)
+
+
+
+"""
+Add this to your existing Sales/views.py, alongside GenerateIRNView and
+GenerateEWayBillView. Needs the same imports already present for both
+of those (generate_irn, save_irn_to_invoice, generate_ewaybill,
+save_ewaybill_to_invoice, and their exception classes).
+"""
+
+
+class GenerateIRNAndEWayBillView(APIView):
+    """
+    POST /api/einvoice/generate-irn-and-ewaybill/<invoice_id>/
+
+    Generates the IRN first, then immediately generates the e-way bill
+    using that IRN — one call instead of two from the frontend.
+
+    Behaviour on partial failure:
+      - If the invoice already has an IRN, skips straight to the
+        e-way bill step using the existing IRN (doesn't error out).
+      - If IRN generation fails, stops there and returns the error —
+        no e-way bill attempt is made (there's no IRN to use yet).
+      - If IRN succeeds but e-way bill generation fails (e.g. missing
+        vehicle number, bad distance), the IRN is still saved and kept.
+        The response reports the IRN as successful and the e-way bill
+        as failed, so nothing already-good gets lost.
+    """
+
+    def post(self, request, invoice_id):
+        try:
+            invoice = Invoice.objects.get(id=invoice_id)
+        except Invoice.DoesNotExist:
+            return Response(
+                {"error": f"Invoice {invoice_id} not found."},
+                status=http_status.HTTP_404_NOT_FOUND,
+            )
+
+        result = {
+            "irn": None,
+            "irn_status": None,
+            "irn_error": None,
+            "eway_bill_no": None,
+            "eway_bill_error": None,
+        }
+
+        # --- Step 1: IRN (skip if it already exists) ---
+        if invoice.irn:
+            result["irn"] = invoice.irn
+            result["irn_status"] = invoice.irn_status
+        else:
+            try:
+                irn_response = generate_irn(invoice)
+            except (EInvoiceGenerationError, EInvoiceAuthError) as exc:
+                invoice.irn_error = str(exc)
+                invoice.save(update_fields=["irn_error"])
+                result["irn_error"] = str(exc)
+                # Can't proceed to e-way bill without an IRN.
+                return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
+
+            save_irn_to_invoice(invoice, irn_response)
+            result["irn"] = invoice.irn
+            result["irn_status"] = invoice.irn_status
+
+        # --- Step 2: E-way bill (skip if it already exists) ---
+        if invoice.Eway_bill_no:
+            result["eway_bill_no"] = invoice.Eway_bill_no
+        else:
+            try:
+                ewb_response = generate_ewaybill(invoice)
+            except (ValueError, EWayBillGenerationError) as exc:
+                result["eway_bill_error"] = str(exc)
+                # IRN already succeeded and is saved — return 200 with
+                # the partial result rather than failing the whole call.
+                return Response(result, status=http_status.HTTP_200_OK)
+
+            save_ewaybill_to_invoice(invoice, ewb_response)
+            result["eway_bill_no"] = invoice.Eway_bill_no
+
+        return Response(result, status=http_status.HTTP_200_OK)
+
+
+
+from django.db.models import Q
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
+from .models import Invoice
+from .serializers import InvoiceSerializer
+
+
+@api_view(["GET"])
+def get_empty_irn_invoices(request):
+    """
+    Get all invoices where IRN is empty or NULL.
+    """
+
+    invoices = Invoice.objects.filter(
+        Q(irn__isnull=True) | Q(irn="")
+    ).order_by("-id")
+
+    serializer = InvoiceSerializer(invoices, many=True)
+
+    return Response(
+        {
+            "status": True,
+            "count": invoices.count(),
+            "data": serializer.data
+        },
+        status=status.HTTP_200_OK
+    )

@@ -18,6 +18,7 @@ from .import views
 from .views import *
 
 
+
 router = DefaultRouter()
 router.register(r'onwardchallan', OnwardChallanViewSet)
 router.register(r'transportdetails', transportdetailsview)
@@ -101,4 +102,17 @@ urlpatterns=router.urls+[
     path("generate-invoice-no/",  GenerateInvoiceNo.as_view(), name="generate-invoice-no"),
 
     path('heat/',HeatAPIView.as_view()),
+
+
+    ## Genrate IRN and EWaybill api
+    path("generate-irn/<int:invoice_id>/", GenerateIRNView.as_view(), name="einvoice-generate-irn"),
+    path("status/<int:invoice_id>/", EInvoiceStatusView.as_view(), name="einvoice-status"),
+    path('api/einvoice/generate-ewaybill/<invoice_id>/', GenerateEWayBillView.as_view(),name='e-way-bill-genrate'),
+    path('api/einvoice/generate-irn-and-ewaybill/<invoice_id>/',GenerateIRNAndEWayBillView.as_view()),
+
+    path(
+        "api/invoices/empty-irn/",
+        get_empty_irn_invoices,
+        name="get_empty_irn_invoices"
+    ),
 ]

@@ -207,3 +207,47 @@ JWT_AUTH = {
     'JWT_REFRESH_EXPIRATION_DELTA': timedelta(days=7),
 }
 
+
+import os
+import environ
+
+env = environ.Env()
+environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
+# Add to your Django settings.py — pull real values from environment
+# variables (e.g. via django-environ or os.environ), never commit them.
+
+EINVOICE_BASE_URL = env("EINVOICE_BASE_URL", default="https://staging.perione.in/einvoice")
+EINVOICE_EMAIL = env("EINVOICE_EMAIL")
+EINVOICE_USERNAME = env("EINVOICE_USERNAME")
+EINVOICE_PASSWORD = env("EINVOICE_PASSWORD")
+EINVOICE_CLIENT_ID = env("EINVOICE_CLIENT_ID")
+EINVOICE_CLIENT_SECRET = env("EINVOICE_CLIENT_SECRET")
+EINVOICE_GSTIN = env("EINVOICE_GSTIN")
+
+
+EINVOICE_SELLER_LEGAL_NAME = env("EINVOICE_SELLER_LEGAL_NAME") 
+EINVOICE_SELLER_TRADE_NAME = env("EINVOICE_SELLER_TRADE_NAME") 
+EINVOICE_SELLER_ADDR1 = env("EINVOICE_SELLER_ADDR1") 
+EINVOICE_SELLER_ADDR2 = env("EINVOICE_SELLER_ADDR2") 
+EINVOICE_SELLER_LOC = env("EINVOICE_SELLER_LOC") 
+EINVOICE_SELLER_PIN = env("EINVOICE_SELLER_PIN") 
+EINVOICE_SELLER_STCD = env("EINVOICE_SELLER_STCD")
+
+# Reuse your existing Redis setup (you already use Redis for Celery,
+# so this just points Django's cache framework at the same instance,
+# ideally a different DB index to keep it separate from Celery).
+# CACHES = {
+#     "default": {
+#         "BACKEND": "django_redis.cache.RedisCache",
+#         "LOCATION": env("REDIS_CACHE_URL", default="redis://127.0.0.1:6379/1"),
+#         "OPTIONS": {
+#             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+#         },
+#     }
+# }
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
+}

@@ -200,3 +200,87 @@ def create_invoice_no():
             return invoice_no
 
     raise ValueError("No available Invoice numbers left for current financial year")
+
+
+
+
+from All_Masters.models import Item
+
+
+def fill_invoice_buyer_details(invoice):
+    """
+    Get customer details from Item and fill Invoice buyer fields.
+
+    Invoice bill_to format:
+        "Ram kumawat | C001"
+    """
+
+    if not invoice.bill_to:
+        return invoice
+
+    parts = invoice.bill_to.split("|")
+
+    customer_name = parts[0].strip()
+    customer_number = parts[1].strip() if len(parts) > 1 else None
+
+    # Find customer
+    customer = None
+
+    if customer_number:
+        customer = Item.objects.filter(
+            Name__iexact=customer_name,
+            number=customer_number,
+            type="Customer"
+        ).first()
+    else:
+        customer = Item.objects.filter(
+            Name__iexact=customer_name,
+            type="Customer"
+        ).first()
+
+    if not customer:
+        print(
+            f"⚠️ Customer not found: "
+            f"Name={customer_name}, Number={customer_number}"
+        )
+        return invoice
+
+    # ---------------------------------------
+    # Copy Item details → Invoice
+    # ---------------------------------------
+
+    invoice.buyer_gstin = customer.GST_No2
+    invoice.transporter_gstin=customer.GST_No2
+    invoice.buyer_legal_name = (
+        customer.Legal_Name_GST or customer.Name
+    )
+
+    invoice.buyer_addr2 = customer.Address_Line_1
+
+    invoice.buyer_addr1 = customer.Address_Line_1
+    invoice.buyer_location = customer.City
+    invoice.buyer_pincode = customer.Pin_Code
+    invoice.buyer_state_code = customer.State_Code
+
+    # Place of supply
+    invoice.buyer_pos = customer.State_Code
+
+    invoice.save(
+        update_fields=[
+            "buyer_gstin",
+            "buyer_legal_name",
+            "buyer_addr1",
+            "buyer_addr2",
+            "buyer_location",
+            "buyer_pincode",
+            "buyer_state_code",
+            "buyer_pos",
+            "transporter_gstin",
+        ]
+    )
+
+    print(
+        f"✅ Buyer details filled for Invoice {invoice.invoice_no}"
+    )
+
+    return invoice
