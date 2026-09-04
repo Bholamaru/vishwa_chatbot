@@ -1810,7 +1810,6 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
                 f"⚠️ BOM not found for RM: {rm_code}"
             )
 
-            # Original qty remains in qty
             production.qty = original_qty
 
             production.bar_value = Decimal("0")
@@ -1871,44 +1870,26 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
         )
 
         # --------------------------------------------------
-        # REMAINING PRODUCTION QTY
-        #
-        # 10 - 0.50 - 0.50 = 9
-        # --------------------------------------------------
-        remaining_prod_qty = (
-            original_qty
-            - bar_value
-            - wire_rod_value
-        )
-
-        if remaining_prod_qty < 0:
-            remaining_prod_qty = Decimal("0")
-
-        remaining_prod_qty = remaining_prod_qty.quantize(
-            Decimal("0.01"),
-            rounding=ROUND_DOWN
-        )
-
-        # --------------------------------------------------
         # SAVE
         # --------------------------------------------------
 
-        # qty = ORIGINAL quantity
+        # IMPORTANT:
+        # qty remains ORIGINAL quantity
         production.qty = original_qty
 
-        # bar deduction
+        # BAR value
         production.bar_value = bar_value
 
-        # wire rod deduction
+        # WIRE ROD value
         production.wier_rod_value = wire_rod_value
 
-        # prod_qty = REMAINING quantity
-        production.prod_qty = remaining_prod_qty
+        # IMPORTANT:
+        # DO NOT MODIFY prod_qty
+        # prod_qty remains the original entered quantity
 
         production.save(
             update_fields=[
                 "qty",
-                "prod_qty",
                 "bar_value",
                 "wier_rod_value"
             ]
@@ -1928,10 +1909,16 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
             Wire Rod %    : {wire_rod_percentage}
             Wire Rod Value: {wire_rod_value}
 
-            Final Prod Qty: {remaining_prod_qty}
+            Prod Qty      : {production.prod_qty}
+
+            Total Material Consumption:
+                Production : {original_qty}
+                BAR        : {bar_value}
+                Wire Rod   : {wire_rod_value}
+                -----------------------------
+                Total      : {original_qty + bar_value + wire_rod_value}
             """
         )
-
     def get_parent_op_number(self, parent_operation):
             
         text = str(parent_operation or "")
@@ -2297,91 +2284,284 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
     # CREATE
     # -------------------------------------------------------------
     def create(self, validated_data):
-        print("\n" + "="*80, flush=True)
+        print("\n" + "=" * 80, flush=True)
         print("🚀 OOPurchaseSerializer.create() CALLED", flush=True)
-        print("="*80 + "\n", flush=True)
-        
-        
-        # Extract nested data
-        MachineIdleTime_Detail_Enter_data = validated_data.pop('MachineIdleTime_Detail_Enter', [])
+        print("=" * 80 + "\n", flush=True)
 
-        
+        # -------------------------------------------------------------
+        # Extract nested data
+        # -------------------------------------------------------------
+        MachineIdleTime_Detail_Enter_data = validated_data.pop(
+            'MachineIdleTime_Detail_Enter',
+            []
+        )
+
+        # -------------------------------------------------------------
         # Store original ParentOperation before creating the object
-        original_parent_operation = validated_data.get('ParentOperation', None)
-        
-        # Create production entry
-        production_entry = ProductionEntry.objects.create(**validated_data)
+        # -------------------------------------------------------------
+        original_parent_operation = validated_data.get(
+            'ParentOperation',
+            None
+        )
+
+        # -------------------------------------------------------------
+        # Create ProductionEntry
+        # -------------------------------------------------------------
+        production_entry = ProductionEntry.objects.create(
+            **validated_data
+        )
+
+        # -------------------------------------------------------------
+        # Calculate BAR + Wire Rod
+        #
+        # IMPORTANT:
+        # This should NOT reduce production_entry.prod_qty.
+        # BAR and Wire Rod are additional material consumption.
+        # -------------------------------------------------------------
         self.calculate_bar_wire_rod(production_entry)
 
+        # -------------------------------------------------------------
+        # Subtract from parent operation
+        # -------------------------------------------------------------
         self.subtract_from_parent_operation(production_entry)
 
-        print(f"✅ Created ProductionEntry: ID={production_entry.id}", flush=True)
-        
+        print(
+            f"✅ Created ProductionEntry: ID={production_entry.id}",
+            flush=True
+        )
+
+        # -------------------------------------------------------------
         # Create related MachineIdleTime entries
+        # -------------------------------------------------------------
         for MachineIdleTime_data in MachineIdleTime_Detail_Enter_data:
-            MachineIdleTime_Detail = MachineIdleTime.objects.create(**MachineIdleTime_data)
-            production_entry.MachineIdleTime_Detail_Enter.add(MachineIdleTime_Detail)
-        
+
+            MachineIdleTime_Detail = MachineIdleTime.objects.create(
+                **MachineIdleTime_data
+            )
+
+            production_entry.MachineIdleTime_Detail_Enter.add(
+                MachineIdleTime_Detail
+            )
+
+        # -------------------------------------------------------------
         # Update ParentOperation if operation starts with "10"
-        self.update_parent_operation_for_operation_10(production_entry, original_parent_operation=original_parent_operation)
+        # -------------------------------------------------------------
+        self.update_parent_operation_for_operation_10(
+            production_entry,
+            original_parent_operation=original_parent_operation
+        )
 
-        # Extract heat number
-        lot_no_value = (production_entry.lot_no or "").strip()
-        heat_no = lot_no_value.split("|")[0].strip() if "|" in lot_no_value else lot_no_value
-        print(f"🔍 Extracted HeatNo: {heat_no}", flush=True)
+        # -------------------------------------------------------------
+        # Extract Heat Number
+        # -------------------------------------------------------------
+        lot_no_value = (
+            production_entry.lot_no or ""
+        ).strip()
 
-        # Compute effective quantity based on operation type
-        operation = (production_entry.operation or "").strip()
-        qty = Decimal(production_entry.qty or 0)
+        heat_no = (
+            lot_no_value.split("|")[0].strip()
+            if "|" in lot_no_value
+            else lot_no_value
+        )
 
-        qty_to_subtract = self.compute_effective_qty(operation, qty, original_parent_operation)
-        
-        # print(f"📊 Quantity to subtract: {qty_to_subtract}", flush=True)
+        print(
+            f"🔍 Extracted HeatNo: {heat_no}",
+            flush=True
+        )
 
-        # if qty_to_subtract <= 0:
-        #     print(f"⚠️ qty_to_subtract <= 0, skipping FIFO subtraction", flush=True)
-        #     return production_entry
-        
-        # Subtract only when operation starts with 10
-        operation_clean = str(operation).replace(" ", "").split("|")[0]
+        # -------------------------------------------------------------
+        # Compute effective quantity
+        # -------------------------------------------------------------
+        operation = (
+            production_entry.operation or ""
+        ).strip()
+
+        qty = Decimal(
+            production_entry.qty or 0
+        )
+
+        qty_to_subtract = self.compute_effective_qty(
+            operation,
+            qty,
+            original_parent_operation
+        )
+
+        # -------------------------------------------------------------
+        # Only subtract material for operation starting with 10
+        # -------------------------------------------------------------
+        operation_clean = (
+            str(operation)
+            .replace(" ", "")
+            .split("|")[0]
+        )
 
         if not operation_clean.startswith("10"):
-            print("⏭️ Skipping FIFO subtraction — operation is not starting with 10", flush=True)
+
+            print(
+                "⏭️ Skipping FIFO subtraction — "
+                "operation is not starting with 10",
+                flush=True
+            )
+
             return production_entry
 
+        # -------------------------------------------------------------
+        # Check effective quantity
+        # -------------------------------------------------------------
         if qty_to_subtract <= 0:
-            print(f"⚠️ qty_to_subtract <= 0, skipping FIFO subtraction", flush=True)
+
+            print(
+                "⚠️ qty_to_subtract <= 0, "
+                "skipping FIFO subtraction",
+                flush=True
+            )
+
             return production_entry
 
-# FIFO subtraction logic continues...
-
-        
-
-         
-
-
-
+        # -------------------------------------------------------------
         # FIFO subtraction from MaterialChallanTable
-        print(f"🔄 Starting FIFO subtraction for HeatNo: {heat_no}", flush=True)
-        remaining = Decimal(qty_to_subtract)
-        for item in MaterialChallanTable.objects.filter(HeatNo__iexact=heat_no).order_by('id'):
+        # -------------------------------------------------------------
+        print(
+            f"🔄 Starting FIFO subtraction for HeatNo: {heat_no}",
+            flush=True
+        )
+
+        # -------------------------------------------------------------
+        # BAR + WIRE ROD are ADDITIONAL consumption
+        # -------------------------------------------------------------
+
+        bar_value = Decimal(
+            production_entry.bar_value or 0
+        )
+
+        wire_rod_value = Decimal(
+            production_entry.wier_rod_value or 0
+        )
+
+        # -------------------------------------------------------------
+        # Production/effective quantity
+        # -------------------------------------------------------------
+        production_consumption = Decimal(
+            qty_to_subtract or 0
+        )
+
+        # -------------------------------------------------------------
+        # Total Material Consumption
+        #
+        # Example:
+        #
+        # Production = 10.00
+        # BAR        = 0.50
+        # Wire Rod   = 0.10
+        #
+        # Total      = 10.60
+        # -------------------------------------------------------------
+        total_material_consumption = (
+            production_consumption
+            + bar_value
+            + wire_rod_value
+        )
+
+        total_material_consumption = (
+            total_material_consumption.quantize(
+                Decimal("0.01"),
+                rounding=ROUND_DOWN
+            )
+        )
+
+        print(
+            f"""
+    📊 Material Consumption
+
+    Production Qty : {production_consumption}
+    BAR            : {bar_value}
+    Wire Rod       : {wire_rod_value}
+    --------------------------------
+    Total          : {total_material_consumption}
+    """,
+            flush=True
+        )
+
+        # -------------------------------------------------------------
+        # Start FIFO subtraction
+        # -------------------------------------------------------------
+        remaining = total_material_consumption
+
+        for item in MaterialChallanTable.objects.filter(
+            HeatNo__iexact=heat_no
+        ).order_by('id'):
+
+            # Nothing left to subtract
             if remaining <= 0:
                 break
-            current_qty = Decimal(item.Qty or 0)
+
+            # Current stock
+            current_qty = Decimal(
+                item.Qty or 0
+            )
+
+            # Skip empty/zero stock
             if current_qty <= 0:
                 continue
-            to_subtract = min(current_qty, remaining)
-            item.Qty = str(current_qty - to_subtract)
-            item.save(update_fields=["Qty"])
-            print(f"✓ ChallanTable {item.id} FIFO subtract: {current_qty} → {item.Qty} (−{to_subtract}, HeatNo={heat_no})", flush=True)
+
+            # ---------------------------------------------------------
+            # FIFO quantity
+            # ---------------------------------------------------------
+            to_subtract = min(
+                current_qty,
+                remaining
+            )
+
+            # ---------------------------------------------------------
+            # Update stock
+            # ---------------------------------------------------------
+            new_qty = current_qty - to_subtract
+
+            item.Qty = str(
+                new_qty
+            )
+
+            item.save(
+                update_fields=["Qty"]
+            )
+
+            print(
+                f"✓ ChallanTable {item.id} FIFO subtract: "
+                f"{current_qty} → {item.Qty} "
+                f"(−{to_subtract}, HeatNo={heat_no})",
+                flush=True
+            )
+
+            # ---------------------------------------------------------
+            # Remaining quantity
+            # ---------------------------------------------------------
             remaining -= to_subtract
 
-        print(f"✅ OOPurchaseSerializer.create() COMPLETED\n", flush=True)
-        
+        # -------------------------------------------------------------
+        # Stock insufficient
+        # -------------------------------------------------------------
+        if remaining > 0:
 
+            print(
+                f"⚠️ Stock insufficient. "
+                f"Remaining consumption = {remaining}",
+                flush=True
+            )
 
+        # -------------------------------------------------------------
+        # Create completed
+        # -------------------------------------------------------------
+        print(
+            f"✅ FIFO subtraction completed for "
+            f"ProductionEntry ID={production_entry.id}",
+            flush=True
+        )
+
+        # -------------------------------------------------------------
+        # VERY IMPORTANT:
+        # DRF create() MUST return the created instance
+        # -------------------------------------------------------------
         return production_entry
-
     # -------------------------------------------------------------
     # UPDATE
     # -------------------------------------------------------------

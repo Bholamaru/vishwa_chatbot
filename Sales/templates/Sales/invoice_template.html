@@ -1,51 +1,120 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <style>
-        body { font-family: Arial; font-size: 11px; }
-        table { width: 100%; border-collapse: collapse; }
-        td, th { border: 1px solid black; padding: 4px; }
-        .no-border td { border: none; }
-        .center { text-align: center; }
-        .right { text-align: right; }
-        .bold { font-weight: bold; }
-        .small { font-size: 10px; }
-    </style>
+<meta charset="UTF-8">
+<style>
+    /* ---- A4 PAGE SETUP ---- */
+    @page {
+        size: A4;
+        margin: 12mm 10mm;
+    }
+
+    html, body {
+        margin: 0;
+        padding: 0;
+    }
+
+    body {
+        font-family: Arial, sans-serif;
+        font-size: 12px;
+        line-height: 1.4;
+        width: 210mm;
+        min-height: 297mm;
+        margin: 0 auto;
+        padding: 10mm;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    td, th {
+        border: 1px solid black;
+        padding: 6px 8px;
+        vertical-align: top;
+    }
+
+    .no-border td {
+        border: none;
+        padding: 4px 6px;
+    }
+
+    .center { text-align: center; }
+    .right { text-align: right; }
+    .left { text-align: left; }
+    .bold { font-weight: bold; }
+    .small { font-size: 10px; }
+
+    h1 {
+        margin: 0;
+        font-size: 22px;
+        letter-spacing: 1px;
+    }
+
+    /* header block spacing */
+    .header-table td { padding: 2px 6px; }
+
+    /* item table should grow to fill remaining page space */
+    .items-wrapper {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .items-table {
+        flex: 1 1 auto;
+    }
+
+    .items-table td, .items-table th {
+        padding: 6px 8px;
+    }
+
+    /* push footer (signature) to the bottom of the page */
+    .footer-block {
+        margin-top: auto;
+        padding-top: 20px;
+    }
+
+    /* avoid awkward table breaks when printed */
+    table, tr, td, th {
+        page-break-inside: avoid;
+    }
+
+    /* print-specific tweaks */
+    @media print {
+        body {
+            width: auto;
+            min-height: auto;
+        }
+    }
+</style>
 </head>
 
 <body>
-<!-- 
-<table class="no-border">
-    <tr>
-        <td class="left bold">SSI UNIT</td>
-        <td class="center bold  "  ><h2>TAX INVOICE</h2></td>
-        <td class="right bold">ORIGINAL FOR RECIPIENT</td>
-    </tr>
-</table> -->
-<table class="no-border" style="width:100%;">
-    <tr>
-        <td class="bold" style="width:33.33%; text-align:left;">
-            SSI UNIT
-        </td>
 
-        <td class="bold" style="width:33.33%; text-align:center;">
-            <h1 style="margin:0;">TAX INVOICE</h1>
-        </td>
-
-        <td class="bold" style="width:33.33%; text-align:right;">
-            ORIGINAL FOR RECIPIENT
-        </td>
+<!-- ================= TOP BAR ================= -->
+<table class="no-border header-table">
+    <tr>
+        <td class="bold" style="width:33.33%; text-align:left;">SSI UNIT</td>
+        <td class="bold" style="width:33.33%; text-align:center;"><h1>TAX INVOICE</h1></td>
+        <td class="bold" style="width:33.33%; text-align:right;">ORIGINAL FOR RECIPIENT</td>
     </tr>
 </table>
 
-<p class="center small">(Under Section 31 of GST Act, 2017 read with Rule 48 of GST Rule, 2017)</p>
+<p class="center small" style="margin-top:0;">(Under Section 31 of GST Act, 2017 read with Rule 48 of GST Rule, 2017)</p>
 
+<!-- ================= SUPPLIER / INVOICE INFO ================= -->
 <table>
     <tr>
         <td width="50%">
             <b>Supplier Details:</b><br>
             <b>Vishwa Samrudhi Industries</b><br>
-            Plot No.125 Gut NO . 125 Near M Sector,</P><P> Ambica Weigh Bridge M.I.D.C Wafuj Chh. Sambhaji Nagar<br>
+            Plot No.125 Gut NO . 125 Near M Sector,<br>
+            Ambica Weigh Bridge M.I.D.C Wafuj Chh. Sambhaji Nagar<br>
             PH NO: 8888826579<br><br>
 
             State: MAHARASHTRA<br>
@@ -59,12 +128,12 @@
         <td width="50%">
             <table class="no-border">
                 <tr>
-                    <td class="center">
+                    <td class="center" style="width:35%;">
                         {% if qr_code %}
-                        <img src="{{ qr_code }}" width="120">
+                        <img src="{{ qr_code }}" style="width: 130px; height: 130px;">
                         {% endif %}
                     </td>
-                    <td>
+                    <td style="width:65%;">
                         Invoice No : {{ invoice.invoice_no }}<br>
                         Invoice Date : {{ invoice.invoice_Date }}<br>
                         Time of Prepar.: {{ invoice.invoice_time|default:"" }}<br>
@@ -83,87 +152,109 @@
     </tr>
 </table>
 
+<!-- ================= IRN ================= -->
 <table>
     <tr>
-        <td>
+        <td><b>IRN NO : </b>{{ invoice.irn }}</td>
+        <td><b>ACK NO :</b>{{ invoice.ack_no}}</td>
+
+    </tr>
+</table>
+
+<!-- ================= BUYER / CONSIGNEE ================= -->
+<table>
+    <tr>
+        <td width="50%">
             <b>Details of Receiver (Billed To)</b><br>
             {{ invoice.bill_to|default:"" }}<br>
-            GSTIN:
+            {{ invoice.buyer_addr1 }} &nbsp; {{ invoice.buyer_location }}<br>
+            {{ invoice.buyer_pincode }}<br>
+
+            <b>GSTIN:</b> {{ invoice.buyer_gstin }}<br>
+            <b>State Code:</b> {{ invoice.buyer_state_code }}
         </td>
-        <td>
+        <td width="50%">
             <b>Details of Consignee (Shipped To)</b><br>
             {{ invoice.ship_to|default:"" }}<br>
-            GSTIN:
+            <b>GSTIN:</b> {{ invoice.buyer_gstin }}<br>
         </td>
     </tr>
 </table>
 
-<table>
-    <tr>
-        <th>Sr No</th>
-        <th>Description</th>
-        <th>HSN</th>
-        <th>No of Pkgs</th>
-        <th>UOM</th>
-        <th>Qty</th>
-        <th>Rate</th>
-        <th>Amount</th>
-    </tr>
+<!-- ================= ITEMS (grows to fill the page) ================= -->
+<div class="items-wrapper">
+    <table class="items-table">
+        <tr>
+            <th style="width:6%;">Sr No</th>
+            <th style="width:32%;">Description</th>
+            <th style="width:10%;">HSN</th>
+            <th style="width:10%;">No of Pkgs</th>
+            <th style="width:8%;">UOM</th>
+            <th style="width:8%;">Qty</th>
+            <th style="width:10%;">Rate</th>
+            <th style="width:16%;">Amount</th>
+        </tr>
 
-    {% for item in items %}
-    <tr>
-        <td>{{ forloop.counter }}</td>
-        <td style="text-align:left">{{ item.description }}</td>
-        <td>{{ item.hsn_code }}</td>
-        <td>{{ item.pkg_qty|default:"" }}</td>
-        <td>NOS</td>
-        <td>{{ item.inv_qty|default:item.po_qty|default:"0" }}</td>
-        <td>{{ item.rate|default:"0" }}</td>
-        <td>{{ item.amount }}</td>
-    </tr>
-    {% endfor %}
-</table>
+        {% for item in items %}
+        <tr>
+            <td class="center">{{ forloop.counter }}</td>
+            <td style="text-align:left">{{ item.description }}</td>
+            <td class="center">{{ item.hsn_code }}</td>
+            <td class="center">{{ item.pkg_qty|default:"" }}</td>
+            <td class="center">NOS</td>
+            <td class="center">{{ item.inv_qty|default:item.po_qty|default:"0" }}</td>
+            <td class="right">{{ item.rate|default:"0" }}</td>
+            <td class="right">{{ item.amount }}</td>
+        </tr>
+        {% endfor %}
 
+        <!-- filler row so the table visually stretches on short invoices -->
+        <tr>
+            <td colspan="8" style="border-top:none; height:100%;">&nbsp;</td>
+        </tr>
+    </table>
+</div>
+
+<!-- ================= TOTALS ================= -->
 <table>
     <tr>
         <td width="60%">
-            Dt & Time of Issue: {{ invoice.invoice_Date }} {{ invoice.invoice_time|default:"" }}<br>
-            Dt & Time of Removal: {{ invoice.date_of_removal }} {{ invoice.time|default:"" }}<br><br>
+            Dt &amp; Time of Issue: {{ invoice.invoice_Date }} {{ invoice.invoice_time|default:"" }}<br>
+            Dt &amp; Time of Removal: {{ invoice.date_of_removal }} {{ invoice.time|default:"" }}<br><br>
 
             Taxable Value in words:
         </td>
 
-        <td width="40%">
+        <td width="40%" style="padding:0;">
             <table>
-                <tr><td>Total Value</td><td>{{ total }}</td></tr>
-                <tr><td>Discount</td><td>{{ gst.disc_amt|default:"0.00" }}</td></tr>
-                <tr><td>Taxable Value</td><td>{{ gst.assessble_value|default:"0.00" }}</td></tr>
-                <tr><td>CGST</td><td>{{ gst.cgst_amt|default:"0.00" }}</td></tr>
-                <tr><td>SGST</td><td>{{ gst.sgst_amt|default:"0.00" }}</td></tr>
-                <tr><td>IGST</td><td>{{ gst.igst_amt|default:"0.00" }}</td></tr>
-                <tr><td><b>Total Invoice Value</b></td><td><b>{{ grand_total|default:total }}</b></td></tr>
+                <tr><td>Total Value</td><td class="right">{{ total }}</td></tr>
+                <tr><td>Discount</td><td class="right">{{ gst.disc_amt|default:"0.00" }}</td></tr>
+                <tr><td>Taxable Value</td><td class="right">{{ gst.assessble_value|default:"0.00" }}</td></tr>
+                <tr><td>CGST</td><td class="right">{{ gst.cgst_amt|default:"0.00" }}</td></tr>
+                <tr><td>SGST</td><td class="right">{{ gst.sgst_amt|default:"0.00" }}</td></tr>
+                <tr><td>IGST</td><td class="right">{{ gst.igst_amt|default:"0.00" }}</td></tr>
+                <tr><td><b>Total Invoice Value</b></td><td class="right"><b>{{ grand_total|default:total }}</b></td></tr>
             </table>
         </td>
     </tr>
 </table>
 
-<br>
-
-<p class="small">
-This invoice is due for payment on 23/03/2026...
+<p class="small" style="margin-bottom:0;">
+    This invoice is due for payment on 23/03/2026...
 </p>
 
-<br><br>
-
-<table class="no-border">
-    <tr>
-        <td></td>
-        <td class="right">
-            For Vishwa Samrudhi Industries<br><br><br>
-            Authorised Signatory
-        </td>
-    </tr>
-</table>
+<!-- ================= FOOTER (pinned to bottom) ================= -->
+<div class="footer-block">
+    <table class="no-border">
+        <tr>
+            <td></td>
+            <td class="right">
+                For Vishwa Samrudhi Industries<br><br><br>
+                Authorised Signatory
+            </td>
+        </tr>
+    </table>
+</div>
 
 </body>
 </html>

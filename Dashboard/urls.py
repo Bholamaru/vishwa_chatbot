@@ -42,5 +42,11 @@ urlpatterns = [
     path("Quality/scrap/qty/",ScrapRejectMonthTotalAPIView.as_view(),name="Scrape-Qty-from-production"),
     path("Quality/sales-return/",SalesReturnFinancialYearAPIView.as_view(),name="gst-sales-return"),
 
+
+    path(
+        "month-wise-total-sales/",
+      month_wise_sales_purchase,
+        name="month-wise-total-sales"
+    ),
 ]
     

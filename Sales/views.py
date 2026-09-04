@@ -1647,27 +1647,109 @@ from .models import Invoice
 #     return response
 
 
+# def safe_float(value):
+#         try:
+#             return float(value)
+#         except (TypeError, ValueError):
+#             return 0.0
+# def generate_invoice_pdf(request, pk):
+#     invoice = get_object_or_404(Invoice, pk=pk)
+#     items = invoice.items.all()
+#     gst = invoice.GSTdetails.first()
+
+#     first_item = items.first()
+    
+#     total = 0
+
+#     for item in items:
+#         qty = safe_float(item.inv_qty or item.po_qty)
+#         rate = safe_float(item.rate)
+#         item.amount = qty * rate
+#         total += item.amount
+
+#     # ✅ FIX HERE
+#     taxable = safe_float(gst.assessble_value) if gst else 0
+#     cgst = safe_float(gst.cgst_amt) if gst else 0
+#     sgst = safe_float(gst.sgst_amt) if gst else 0
+#     igst = safe_float(gst.igst_amt) if gst else 0
+
+#     grand_total = taxable + cgst + sgst + igst
+
+#     context = {
+#         'invoice': invoice,
+#         'items': items,
+#         'first_item': first_item,
+#         'total': total,
+#         'gst': gst,
+#         'grand_total': grand_total
+#     }
+
+#     template = get_template('Sales/invoice_template.html')
+#     html = template.render(context)
+
+#     pdf = HTML(string=html).write_pdf()
+
+#     return HttpResponse(pdf, content_type='application/pdf')
+
+import base64
+from io import BytesIO
+
+import qrcode
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from django.template.loader import get_template
+from weasyprint import HTML
+
+
 def safe_float(value):
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def generate_qr_base64(data):
+    if not data:
+        return None
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=8,
+        border=2,
+    )
+
+    qr.add_data(data)
+    qr.make(fit=True)
+
+    img = qr.make_image()
+
+    buffer = BytesIO()
+    img.save(buffer, format="PNG")
+
+    return "data:image/png;base64," + base64.b64encode(
+        buffer.getvalue()
+    ).decode("utf-8")
+
+
 def generate_invoice_pdf(request, pk):
+
     invoice = get_object_or_404(Invoice, pk=pk)
+
     items = invoice.items.all()
     gst = invoice.GSTdetails.first()
 
     first_item = items.first()
-    
+
     total = 0
 
     for item in items:
         qty = safe_float(item.inv_qty or item.po_qty)
         rate = safe_float(item.rate)
+
         item.amount = qty * rate
         total += item.amount
 
-    # ✅ FIX HERE
     taxable = safe_float(gst.assessble_value) if gst else 0
     cgst = safe_float(gst.cgst_amt) if gst else 0
     sgst = safe_float(gst.sgst_amt) if gst else 0
@@ -1675,23 +1757,29 @@ def generate_invoice_pdf(request, pk):
 
     grand_total = taxable + cgst + sgst + igst
 
+    # Generate QR from signed_qr_code
+    qr_code = generate_qr_base64(invoice.signed_qr_code)
+
     context = {
-        'invoice': invoice,
-        'items': items,
-        'first_item': first_item,
-        'total': total,
-        'gst': gst,
-        'grand_total': grand_total
+        "invoice": invoice,
+        "items": items,
+        "first_item": first_item,
+        "total": total,
+        "gst": gst,
+        "grand_total": grand_total,
+        "qr_code": qr_code,
     }
 
-    template = get_template('Sales/invoice_template.html')
+    template = get_template("Sales/invoice_template.html")
+
     html = template.render(context)
 
     pdf = HTML(string=html).write_pdf()
 
-    return HttpResponse(pdf, content_type='application/pdf')
-
-
+    return HttpResponse(
+        pdf,
+        content_type="application/pdf"
+    )
 
 
 class SalesRateDiffAPI(APIView):

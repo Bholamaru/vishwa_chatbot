@@ -1987,3 +1987,259 @@ class SalesReturnFinancialYearAPIView(APIView):
             })
 
         return Response(result)
+
+
+
+from django.db.models import Sum
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+
+from Sales.models import GstdetailsInvoice
+
+from Store.models import  GrnGst
+
+
+@api_view(["GET"])
+def month_wise_sales_purchase(request):
+    try:
+        month = request.GET.get("month")
+        year = request.GET.get("year")
+
+        # =========================================================
+        # PARTICULAR MONTH
+        # =========================================================
+        if month and year:
+
+            try:
+                month = int(month)
+                year = int(year)
+
+                if month < 1 or month > 12:
+                    return Response({
+                        "status": False,
+                        "message": "Month must be between 1 and 12"
+                    }, status=status.HTTP_400_BAD_REQUEST)
+
+            except ValueError:
+                return Response({
+                    "status": False,
+                    "message": "Month and year must be valid numbers"
+                }, status=status.HTTP_400_BAD_REQUEST)
+
+            # =====================================================
+            # SALES
+            # =====================================================
+
+            sales_result = (
+                GstdetailsInvoice.objects
+                .filter(
+                    invoice__invoice_Date__year=year,
+                    invoice__invoice_Date__month=month,
+                    assessble_value__isnull=False
+                )
+                .aggregate(
+                    total_sales=Sum("assessble_value")
+                )
+            )
+
+            total_sales = sales_result["total_sales"] or 0
+
+
+            # =====================================================
+            # PURCHASE
+            # =====================================================
+
+            purchase_records = GrnGst.objects.filter(
+                New_MRN_Detail__GrnDate__isnull=False
+            )
+
+            total_purchase = Decimal("0.00")
+
+            for gst in purchase_records:
+
+                grn_date = gst.New_MRN_Detail.GrnDate
+
+                if not grn_date:
+                    continue
+
+                try:
+                    # Expected formats:
+                    # YYYY-MM-DD
+                    # DD-MM-YYYY
+                    # DD/MM/YYYY
+
+                    from datetime import datetime
+
+                    parsed_date = None
+
+                    for date_format in (
+                        "%Y-%m-%d",
+                        "%d-%m-%Y",
+                        "%d/%m/%Y",
+                    ):
+                        try:
+                            parsed_date = datetime.strptime(
+                                str(grn_date),
+                                date_format
+                            )
+                            break
+                        except ValueError:
+                            continue
+
+                    if not parsed_date:
+                        continue
+
+                    if (
+                        parsed_date.year != year
+                        or parsed_date.month != month
+                    ):
+                        continue
+
+                    if gst.AssValue:
+                        try:
+                            value = Decimal(str(gst.AssValue))
+                            total_purchase += value
+                        except InvalidOperation:
+                            continue
+
+                except Exception:
+                    continue
+
+
+            # =====================================================
+            # RESPONSE
+            # =====================================================
+
+            return Response({
+                "status": True,
+                "month": f"{year}-{month:02d}",
+                "total_sales": total_sales,
+                "total_purchase": total_purchase
+            }, status=status.HTTP_200_OK)
+
+
+        # =========================================================
+        # ALL MONTHS
+        # =========================================================
+
+        sales_monthly = (
+            GstdetailsInvoice.objects
+            .filter(
+                invoice__invoice_Date__isnull=False,
+                assessble_value__isnull=False
+            )
+            .annotate(
+                month_date=TruncMonth("invoice__invoice_Date")
+            )
+            .values("month_date")
+            .annotate(
+                total_sales=Sum("assessble_value")
+            )
+            .order_by("month_date")
+        )
+
+        sales_data = {}
+
+        for item in sales_monthly:
+
+            month_date = item["month_date"]
+
+            key = month_date.strftime("%Y-%m")
+
+            sales_data[key] = {
+                "month": key,
+                "total_sales": item["total_sales"] or 0,
+                "total_purchase": Decimal("0.00")
+            }
+
+
+        # =========================================================
+        # PURCHASE MONTH-WISE
+        # =========================================================
+
+        purchase_records = GrnGst.objects.filter(
+            New_MRN_Detail__GrnDate__isnull=False
+        )
+
+        for gst in purchase_records:
+
+            grn_date = gst.New_MRN_Detail.GrnDate
+
+            if not grn_date:
+                continue
+
+            try:
+
+                from datetime import datetime
+
+                parsed_date = None
+
+                for date_format in (
+                    "%Y-%m-%d",
+                    "%d-%m-%Y",
+                    "%d/%m/%Y",
+                ):
+                    try:
+                        parsed_date = datetime.strptime(
+                            str(grn_date),
+                            date_format
+                        )
+                        break
+                    except ValueError:
+                        continue
+
+                if not parsed_date:
+                    continue
+
+                key = parsed_date.strftime("%Y-%m")
+
+                if key not in sales_data:
+                    sales_data[key] = {
+                        "month": key,
+                        "total_sales": 0,
+                        "total_purchase": Decimal("0.00")
+                    }
+
+                if gst.AssValue:
+
+                    try:
+                        value = Decimal(str(gst.AssValue))
+
+                        sales_data[key]["total_purchase"] += value
+
+                    except InvalidOperation:
+                        pass
+
+            except Exception:
+                continue
+
+
+        # =========================================================
+        # SORT DATA
+        # =========================================================
+
+        data = sorted(
+            sales_data.values(),
+            key=lambda x: x["month"]
+        )
+
+        # Convert Decimal for JSON
+        for item in data:
+            item["total_purchase"] = float(
+                item["total_purchase"]
+            )
+
+        return Response({
+            "status": True,
+            "message": "Month-wise sales and purchase fetched successfully",
+            "data": data
+        }, status=status.HTTP_200_OK)
+
+
+    except Exception as e:
+
+        return Response({
+            "status": False,
+            "message": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
