@@ -115,4 +115,5 @@ urlpatterns=router.urls+[
         get_empty_irn_invoices,
         name="get_empty_irn_invoices"
     ),
+    path("invoice/delete/<int:pk>/", delete_invoice,name="delete_invoice"),
 ]

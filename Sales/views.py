@@ -3418,3 +3418,29 @@ def get_empty_irn_invoices(request):
         },
         status=status.HTTP_200_OK
     )
+
+
+
+
+@api_view(["DELETE"])
+def delete_invoice(request, pk):
+    try:
+        invoice = Invoice.objects.get(pk=pk)
+    except Invoice.DoesNotExist:
+        return Response(
+            {
+                "status": False,
+                "message": "Invoice not found"
+            },
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    invoice.delete()
+
+    return Response(
+        {
+            "status": True,
+            "message": "Invoice deleted successfully"
+        },
+        status=status.HTTP_200_OK
+    )
