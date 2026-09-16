@@ -168,30 +168,205 @@ class InvoiceItemdetailsSerializer(serializers.ModelSerializer):
         }
 
 
-class InvoiceSerializer(serializers.ModelSerializer):
-    items = InvoiceItemdetailsSerializer(many=True, required=False)  
-    GSTdetails = GstdetailsInvoiceSerializer(many=True, required=False)
+# class InvoiceSerializer(serializers.ModelSerializer):
+#     items = InvoiceItemdetailsSerializer(many=True, required=False)  
+#     GSTdetails = GstdetailsInvoiceSerializer(many=True, required=False)
 
+
+#     class Meta:
+#         model = Invoice
+#         fields = '__all__'
+
+#     def create(self, validated_data):
+#         items_data = validated_data.pop('items', [])
+#         gst_data = validated_data.pop('GSTdetails', [])
+
+#         # Create main Invoice
+#         invoice = Invoice.objects.create(**validated_data)
+
+#         # Create related items
+#         for item in items_data:
+#             InvoiceItemdetails.objects.create(invoice=invoice, **item)
+
+#         for gst in gst_data:
+#             GstdetailsInvoice.objects.create(invoice=invoice, **gst)
+
+#         return invoice
+
+
+from django.db import transaction
+from rest_framework import serializers
+
+from All_Masters.models import BOMItem, ItemTable
+from Production.models import ProductionEntry
+from .models import Invoice, InvoiceItemdetails
+
+# deduct the prod_qty-inv_qty
+class InvoiceSerializer(serializers.ModelSerializer):
+
+    items = InvoiceItemdetailsSerializer(many=True)
+    GSTdetails = GstdetailsInvoiceSerializer(many=True)
 
     class Meta:
         model = Invoice
-        fields = '__all__'
+        fields = "__all__"
 
+    @transaction.atomic
     def create(self, validated_data):
-        items_data = validated_data.pop('items', [])
-        gst_data = validated_data.pop('GSTdetails', [])
 
-        # Create main Invoice
+        # -----------------------------------------
+        # Get nested invoice data
+        # -----------------------------------------
+        items_data = validated_data.pop("items", [])
+        gst_data = validated_data.pop("GSTdetails", [])
+
+        # -----------------------------------------
+        # Create Invoice
+        # -----------------------------------------
         invoice = Invoice.objects.create(**validated_data)
 
-        # Create related items
-        for item in items_data:
-            InvoiceItemdetails.objects.create(invoice=invoice, **item)
+        # -----------------------------------------
+        # Create Invoice Items
+        # -----------------------------------------
+        for item_data in items_data:
 
-        for gst in gst_data:
-            GstdetailsInvoice.objects.create(invoice=invoice, **gst)
+            invoice_item = InvoiceItemdetails.objects.create(
+                invoice=invoice,
+                **item_data
+            )
+
+            # -----------------------------------------
+            # Deduct invoice qty from production
+            # -----------------------------------------
+            self.deduct_invoice_qty_from_production(
+                invoice_item
+            )
+
+        # -----------------------------------------
+        # Create GST details
+        # -----------------------------------------
+        for gst_item in gst_data:
+            GstdetailsInvoice.objects.create(
+                invoice=invoice,
+                **gst_item
+            )
 
         return invoice
+
+    def deduct_invoice_qty_from_production(self, invoice_item):
+
+        part_code = invoice_item.part_code
+        invoice_qty = float(invoice_item.inv_qty or 0)
+
+        if not part_code:
+            return
+
+        if invoice_qty <= 0:
+            return
+
+        # -----------------------------------------
+        # 1. Find Item
+        # -----------------------------------------
+        item = ItemTable.objects.filter(
+            Part_Code__iexact=part_code
+        ).first()
+
+        if not item:
+            raise serializers.ValidationError(
+                f"Item not found for part code: {part_code}"
+            )
+
+        # -----------------------------------------
+        # 2. Find last BOM operation
+        # -----------------------------------------
+        bom_items = BOMItem.objects.filter(
+            item=item
+        )
+
+        last_op_no = -1
+        last_bom = None
+
+        for bom in bom_items:
+
+            if not bom.OPNo:
+                continue
+
+            try:
+                op_no = int(bom.OPNo.strip())
+            except (ValueError, TypeError):
+                continue
+
+            if op_no > last_op_no:
+                last_op_no = op_no
+                last_bom = bom
+
+        if not last_bom:
+            raise serializers.ValidationError(
+                f"No valid BOM operation found for {part_code}"
+            )
+
+        # -----------------------------------------
+        # 3. Find LAST OP production entries
+        # -----------------------------------------
+        production_entries = ProductionEntry.objects.filter(
+            item__icontains=part_code,
+            operation__startswith=last_bom.OPNo
+        ).order_by("id")
+
+        if not production_entries.exists():
+            raise serializers.ValidationError(
+                f"No production found for last operation "
+                f"{last_bom.OPNo} - {part_code}"
+            )
+
+        # -----------------------------------------
+        # 4. Deduct invoice quantity
+        # -----------------------------------------
+        remaining_to_deduct = invoice_qty
+
+        for production in production_entries:
+
+            current_qty = float(
+                production.prod_qty or 0
+            )
+
+            if current_qty <= 0:
+                continue
+
+            if remaining_to_deduct <= 0:
+                break
+
+            # Quantity available in this production row
+            deduct_qty = min(
+                current_qty,
+                remaining_to_deduct
+            )
+
+            # -----------------------------------------
+            # UPDATE DATABASE
+            # -----------------------------------------
+            production.prod_qty = current_qty - deduct_qty
+            production.save(
+                update_fields=["prod_qty"]
+            )
+
+            remaining_to_deduct -= deduct_qty
+
+        # -----------------------------------------
+        # 5. Not enough production quantity
+        # -----------------------------------------
+        if remaining_to_deduct > 0:
+
+            raise serializers.ValidationError(
+                f"Insufficient production quantity for "
+                f"{part_code}. Required: {invoice_qty}, "
+                f"Available: {invoice_qty - remaining_to_deduct}"
+            )
+
+
+
+
+
 
 
 

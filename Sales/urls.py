@@ -115,5 +115,14 @@ urlpatterns=router.urls+[
         get_empty_irn_invoices,
         name="get_empty_irn_invoices"
     ),
-    path("invoice/delete/<int:pk>/", delete_invoice,name="delete_invoice"),
+    path("invoice/delete/<int:pk>/", InvoiceDeleteAPI.as_view(),name="delete_invoice"),
+
+    #cancel_irn
+    path("api/einvoice/cancel-irn/<invoice_id>/", CancelIRNView.as_view(),name="cancel_IRN-no"),
+
+    path(
+        "active-irn-invoices/",
+        ActiveIRNInvoiceListView.as_view(),
+        name="active-irn-invoices"
+    ),
 ]

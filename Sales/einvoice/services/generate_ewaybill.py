@@ -16,6 +16,8 @@ EINVOICE_USERNAME = settings.EINVOICE_USERNAME
 EINVOICE_CLIENT_ID = settings.EINVOICE_CLIENT_ID
 EINVOICE_CLIENT_SECRET = settings.EINVOICE_CLIENT_SECRET
 EINVOICE_GSTIN = settings.EINVOICE_GSTIN
+EINVOICE_ENVIRONMENT=settings.EINVOICE_ENVIRONMENT
+
 
 # Maps your mode_of_trans text to the API's numeric transport mode code
 TRANS_MODE_CODES = {
@@ -77,6 +79,7 @@ def _call_generate_ewaybill(payload, auth_token):
         "client_id": EINVOICE_CLIENT_ID,
         "client_secret": EINVOICE_CLIENT_SECRET,
         "username": EINVOICE_USERNAME,
+        "environment": EINVOICE_ENVIRONMENT, 
         "auth-token": auth_token,
         "gstin": EINVOICE_GSTIN,
         "Content-Type": "application/json",

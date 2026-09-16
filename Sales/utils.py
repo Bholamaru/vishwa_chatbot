@@ -45,15 +45,44 @@ def create_reworknumber():
 
 from .models import Invoice
 
+# def create_invoiceno():
+#     current_year=datetime.now().year % 100
+#     next_year =(datetime.now().year + 1)% 100
+#     prefix = f"{ current_year:02d}{next_year:02d}"
+#     for counter in range(1, 10000):
+#         invoice_no = f"{prefix}{counter:05d}"
+#         if not Invoice.objects.filter(invoice_no = invoice_no).exists():
+#             return invoice_no
+#     raise ValueError("NO available challan numbers left for the current year range")
+
+from datetime import datetime
+from .models import Invoice, InvoiceNumberHistory
+
+
 def create_invoiceno():
-    current_year=datetime.now().year % 100
-    next_year =(datetime.now().year + 1)% 100
-    prefix = f"{ current_year:02d}{next_year:02d}"
+    current_year = datetime.now().year % 100
+    next_year = (datetime.now().year + 1) % 100
+
+    prefix = f"{current_year:02d}{next_year:02d}"
+
     for counter in range(1, 10000):
+
         invoice_no = f"{prefix}{counter:05d}"
-        if not Invoice.objects.filter(invoice_no = invoice_no).exists():
+
+        # Check both existing invoices AND previously generated numbers
+        if (
+            not Invoice.objects.filter(invoice_no=invoice_no).exists()
+            and not InvoiceNumberHistory.objects.filter(invoice_no=invoice_no).exists()
+        ):
+            # Permanently reserve this number
+            InvoiceNumberHistory.objects.create(
+                invoice_no=invoice_no
+            )
+
             return invoice_no
-    raise ValueError("NO available challan numbers left for the current year range")
+
+    raise ValueError("NO available invoice numbers left for the current year range")
+
 
 from .models import DebitNote
 def create_debitNote():
@@ -252,7 +281,7 @@ def fill_invoice_buyer_details(invoice):
     invoice.buyer_gstin = customer.GST_No2
     invoice.transporter_gstin=customer.GST_No2
     invoice.buyer_legal_name = (
-        customer.Legal_Name_GST or customer.Name
+         customer.Name  or customer.Legal_Name_GST 
     )
 
     invoice.buyer_addr2 = customer.Address_Line_1

@@ -268,6 +268,12 @@ class GstdetailsInvoice(models.Model):
 
 
  
+class InvoiceNumberHistory(models.Model):
+    invoice_no = models.CharField(max_length=20, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.invoice_no
 
 from django.utils import timezone
 class NewSalesOrder(models.Model):

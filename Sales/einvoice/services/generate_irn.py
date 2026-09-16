@@ -18,7 +18,7 @@ EINVOICE_USERNAME = settings.EINVOICE_USERNAME
 EINVOICE_CLIENT_ID = settings.EINVOICE_CLIENT_ID
 EINVOICE_CLIENT_SECRET = settings.EINVOICE_CLIENT_SECRET
 EINVOICE_GSTIN = settings.EINVOICE_GSTIN
-
+EINVOICE_ENVIRONMENT=settings.EINVOICE_ENVIRONMENT
 
 class EInvoiceGenerationError(Exception):
     """Raised when the Generate IRN call fails (validation, portal error, etc.)."""
@@ -34,6 +34,7 @@ def _call_generate_irn(payload, auth_token):
         "ip_address": "0.0.0.0",
         "client_id": EINVOICE_CLIENT_ID,
         "client_secret": EINVOICE_CLIENT_SECRET,
+        "environment": EINVOICE_ENVIRONMENT, 
         "username": EINVOICE_USERNAME,
         "auth-token": auth_token,
         "gstin": EINVOICE_GSTIN,

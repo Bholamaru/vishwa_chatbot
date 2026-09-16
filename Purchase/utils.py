@@ -25,18 +25,46 @@ def Create_RFQ_No():
 from datetime import datetime
 from .models import PurchasePO
 
-def Create_PO_No():
-    current_year = datetime.now().year % 100      # e.g. 26
-    next_year = (datetime.now().year + 1) % 100   # e.g. 27
+# def Create_PO_No():
+#     current_year = datetime.now().year % 100      # e.g. 26
+#     next_year = (datetime.now().year + 1) % 100   # e.g. 27
 
-    # Prefix becomes "2627"
+#     # Prefix becomes "2627"
+#     prefix = f"{current_year:02d}{next_year:02d}"
+
+#     # Counter: 00001 -> 99999
+#     for counter in range(1, 100000):
+#         po_no = f"{prefix}{counter:05d}"   # 262700001
+
+#         if not PurchasePO.objects.filter(PoNo=po_no).exists():
+#             return po_no
+
+#     raise ValueError("No available PO numbers left for the current financial year.")
+
+from datetime import datetime
+
+def Create_PO_No():
+    current_year = datetime.now().year % 100
+    next_year = (datetime.now().year + 1) % 100
+
     prefix = f"{current_year:02d}{next_year:02d}"
 
-    # Counter: 00001 -> 99999
-    for counter in range(1, 100000):
-        po_no = f"{prefix}{counter:05d}"   # 262700001
+    last_po = (
+        PurchasePO.objects
+        .filter(PoNo__startswith=prefix)
+        .order_by("-PoNo")
+        .first()
+    )
 
-        if not PurchasePO.objects.filter(PoNo=po_no).exists():
-            return po_no
+    if last_po:
+        last_counter = int(last_po.PoNo[-5:])
+        next_counter = last_counter + 1
+    else:
+        next_counter = 1
 
-    raise ValueError("No available PO numbers left for the current financial year.")
+    if next_counter > 99999:
+        raise ValueError(
+            "No available PO numbers left for the current financial year."
+        )
+
+    return f"{prefix}{next_counter:05d}"

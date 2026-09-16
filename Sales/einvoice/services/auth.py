@@ -19,6 +19,8 @@ EINVOICE_PASSWORD = settings.EINVOICE_PASSWORD
 EINVOICE_CLIENT_ID = settings.EINVOICE_CLIENT_ID
 EINVOICE_CLIENT_SECRET = settings.EINVOICE_CLIENT_SECRET
 EINVOICE_GSTIN = settings.EINVOICE_GSTIN
+EINVOICE_ENVIRONMENT=settings.EINVOICE_ENVIRONMENT
+
 
 CACHE_KEY = "einvoice_auth_token"
 # NIC e-invoice tokens are typically valid ~6 hours. Cache for slightly
@@ -41,8 +43,9 @@ def _fetch_new_token() -> str:
         "ip_address": "0.0.0.0",
         "client_id": EINVOICE_CLIENT_ID,
         "client_secret": EINVOICE_CLIENT_SECRET,
+        "environment": EINVOICE_ENVIRONMENT, 
         "gstin": EINVOICE_GSTIN,
-    }
+    } 
 
     try:
         response = requests.get(url, headers=headers, params=params, timeout=30)

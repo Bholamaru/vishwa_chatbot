@@ -29,41 +29,54 @@ def _fmt_date(d):
 
 def _build_item_list(invoice, gst, same_state):
     """
-    Build ItemList from InvoiceItemdetails. The GST rate comes from
-    GstdetailsInvoice.igst (used as the single source of truth for the
-    full rate), but CGST/SGST/IGST amounts are always CALCULATED from
-    that rate and each item's taxable value — never taken directly from
-    GstdetailsInvoice's stored amount fields, since those aren't
-    guaranteed to be internally consistent with the rate (e.g. test/dummy
-    data). This guarantees amounts always match what the portal expects.
+    Build ItemList from InvoiceItemdetails, using the ALREADY-CALCULATED
+    tax amounts from GstdetailsInvoice (cgst_amt/sgst_amt/igst_amt) as
+    the source of truth — not recalculated from a rate field. These are
+    distributed across items proportionally to each item's taxable value
+    share, and the GST rate reported per item is derived FROM the
+    amount (rather than trusting a separate stored rate field), so the
+    numbers sent to the portal are always internally consistent with
+    the real tax amounts your system already computed.
 
-    same_state=True  -> apply CGST+SGST (intra-state), each half the rate
-    same_state=False -> apply IGST (inter-state), full rate
+    same_state=True  -> use cgst_amt + sgst_amt (intra-state)
+    same_state=False -> use igst_amt (inter-state)
     """
     items_qs = list(invoice.items.all())
     if not items_qs:
         return []
 
-    gst_rate_cgst = float(gst.cgst) if gst and gst.cgst else 0.0
-    gst_rate_sgst = float(gst.sgst) if gst and gst.sgst else 0.0
-    gst_rate_igst = float(gst.igst) if gst and gst.igst else 0.0
-
-    items = []
-    for idx, item in enumerate(items_qs, start=1):
+    raw_items = []
+    total_taxable = 0.0
+    for item in items_qs:
         qty = item.inv_qty or 0
         unit_price = float(item.rate or 0)
         taxable_value = round(qty * unit_price, 2)
+        raw_items.append((item, taxable_value))
+        total_taxable += taxable_value
+
+    total_cgst_amt = float(gst.cgst_amt) if gst and gst.cgst_amt else 0.0
+    total_sgst_amt = float(gst.sgst_amt) if gst and gst.sgst_amt else 0.0
+    total_igst_amt = float(gst.igst_amt) if gst and gst.igst_amt else 0.0
+
+    items = []
+    for idx, (item, taxable_value) in enumerate(raw_items, start=1):
+        share = (taxable_value / total_taxable) if total_taxable else 0
 
         if same_state:
-            item_cgst = round(taxable_value * gst_rate_cgst / 100, 2)
-            item_sgst = round(taxable_value * gst_rate_sgst / 100, 2)
+            item_cgst = round(total_cgst_amt * share, 2)
+            item_sgst = round(total_sgst_amt * share, 2)
             item_igst = 0
-            gst_rate = gst_rate_cgst + gst_rate_sgst
+            tax_total = item_cgst + item_sgst
         else:
             item_cgst = 0
             item_sgst = 0
-            item_igst = round(taxable_value * gst_rate_igst / 100, 2)
-            gst_rate = gst_rate_igst
+            item_igst = round(total_igst_amt * share, 2)
+            tax_total = item_igst
+
+        # Derive the rate FROM the amount, so it's always consistent
+        # with what's actually being charged — never trust a separate
+        # stored rate field that might not match the amount.
+        gst_rate = round((tax_total / taxable_value) * 100, 2) if taxable_value else 0
 
         item_total = round(taxable_value + item_cgst + item_sgst + item_igst, 2)
 
@@ -72,10 +85,10 @@ def _build_item_list(invoice, gst, same_state):
             "IsServc": "N",  # TODO: "Y" if this line is a service, not goods
             "PrdDesc": item.description or "",
             "HsnCd": item.hsn_code or "",
-            "Qty": qty,
+            "Qty": item.inv_qty or 0,
             "FreeQty": 0,
             "Unit": item.type_of_packing or "NOS",
-            "UnitPrice": unit_price,
+            "UnitPrice": float(item.rate or 0),
             "TotAmt": taxable_value,
             "Discount": float(item.dis or 0),
             "PreTaxVal": 0,

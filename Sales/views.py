@@ -3422,25 +3422,217 @@ def get_empty_irn_invoices(request):
 
 
 
-@api_view(["DELETE"])
-def delete_invoice(request, pk):
-    try:
-        invoice = Invoice.objects.get(pk=pk)
-    except Invoice.DoesNotExist:
-        return Response(
-            {
-                "status": False,
-                "message": "Invoice not found"
-            },
-            status=status.HTTP_404_NOT_FOUND
+from django.db import transaction
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.views import APIView
+
+from .models import Invoice, InvoiceItemdetails
+from Production.models import ProductionEntry
+
+
+class InvoiceDeleteAPI(APIView):
+
+    @transaction.atomic
+    def delete(self, request, pk):
+
+        try:
+            invoice = Invoice.objects.get(pk=pk)
+        except Invoice.DoesNotExist:
+            return Response(
+                {"error": "Invoice not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # -----------------------------------------
+        # Get invoice items BEFORE deleting invoice
+        # -----------------------------------------
+        invoice_items = InvoiceItemdetails.objects.filter(
+            invoice=invoice
         )
 
-    invoice.delete()
+        # -----------------------------------------
+        # Return invoice qty back to production
+        # -----------------------------------------
+        for invoice_item in invoice_items:
 
-    return Response(
-        {
-            "status": True,
-            "message": "Invoice deleted successfully"
-        },
-        status=status.HTTP_200_OK
-    )
+            part_code = invoice_item.part_code
+            inv_qty = float(invoice_item.inv_qty or 0)
+
+            if not part_code or inv_qty <= 0:
+                continue
+
+            # Find last operation production entries
+            # Same logic as your create()
+            item = ItemTable.objects.filter(
+                Part_Code__iexact=part_code
+            ).first()
+
+            if not item:
+                continue
+
+            bom_items = BOMItem.objects.filter(
+                item=item
+            )
+
+            last_op_no = -1
+            last_bom = None
+
+            for bom in bom_items:
+
+                if not bom.OPNo:
+                    continue
+
+                try:
+                    op_no = int(bom.OPNo.strip())
+                except (ValueError, TypeError):
+                    continue
+
+                if op_no > last_op_no:
+                    last_op_no = op_no
+                    last_bom = bom
+
+            if not last_bom:
+                continue
+
+            production_entries = ProductionEntry.objects.filter(
+                item__icontains=part_code,
+                operation__startswith=last_bom.OPNo
+            ).order_by("id")
+
+            # -----------------------------------------
+            # RETURN QTY
+            # -----------------------------------------
+            remaining_to_return = inv_qty
+
+            for production in production_entries:
+
+                if remaining_to_return <= 0:
+                    break
+
+                current_qty = float(
+                    production.prod_qty or 0
+                )
+
+                # Add quantity back
+                production.prod_qty = (
+                    current_qty + remaining_to_return
+                )
+
+                production.save(
+                    update_fields=["prod_qty"]
+                )
+
+                remaining_to_return = 0
+
+            # -----------------------------------------
+            # Safety check
+            # -----------------------------------------
+            if remaining_to_return > 0:
+                raise Exception(
+                    f"Could not return full quantity for "
+                    f"{part_code}"
+                )
+
+        # -----------------------------------------
+        # Delete invoice
+        # InvoiceItemdetails & GSTdetails will also
+        # be deleted because of CASCADE
+        # -----------------------------------------
+        invoice.delete()
+
+        return Response(
+            {
+                "message": "Invoice deleted and production quantity restored successfully"
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+    
+from Sales.einvoice.services.cancel_irn import cancel_irn, EInvoiceCancelError, save_cancellation_to_invoice
+class CancelIRNView(APIView):
+    """
+    POST /api/einvoice/cancel-irn/<invoice_id>/
+
+    Body:
+      {
+        "reason_code": "1" | "2" | "3" | "4",   # required
+        "remark": "..."                          # required if reason_code == "4"
+      }
+
+    Behaviour:
+      - If the invoice has no IRN, returns 400 -- nothing to cancel.
+      - If the IRN is already cancelled, returns 200 with the existing
+        cancelled status rather than erroring (idempotent -- calling
+        this twice isn't a failure).
+      - If an active e-way bill exists on the invoice, returns 400
+        without calling the portal -- Cancel IRN will be rejected
+        server-side anyway, but this gives a clearer message and
+        avoids a wasted API call.
+      - reason_code / remark validation errors (bad code, missing
+        remark for "Others") are caught locally and returned as 400
+        before any network call.
+    """
+
+    def post(self, request, invoice_id):
+        try:
+            invoice = Invoice.objects.get(id=invoice_id)
+        except Invoice.DoesNotExist:
+            return Response(
+                {"error": f"Invoice {invoice_id} not found."},
+                status=http_status.HTTP_404_NOT_FOUND,
+            )
+
+        result = {
+            "irn": invoice.irn,
+            "irn_status": invoice.irn_status,
+            "cancelled": False,
+            "error": None,
+        }
+
+        if not invoice.irn:
+            result["error"] = "Invoice has no IRN to cancel."
+            return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
+
+        # Idempotent: calling cancel again on an already-cancelled IRN
+        # isn't a failure -- just report the current state.
+        if invoice.irn_status == "CNL":
+            result["cancelled"] = True
+            return Response(result, status=http_status.HTTP_200_OK)
+
+        reason_code = request.data.get("reason_code")
+        remark = request.data.get("remark", "")
+
+        try:
+            cancel_response = cancel_irn(invoice, reason_code, remark)
+        except ValueError as exc:
+            # Local validation failures from build_cancel_irn_payload:
+            # bad reason_code, missing remark for "Others", or an
+            # active e-way bill still attached.
+            result["error"] = str(exc)
+            return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
+        except (EInvoiceCancelError, EInvoiceAuthError) as exc:
+            result["error"] = str(exc)
+            return Response(result, status=http_status.HTTP_400_BAD_REQUEST)
+
+        save_cancellation_to_invoice(invoice, cancel_response)
+
+        result["irn_status"] = invoice.irn_status
+        result["cancelled"] = True
+        return Response(result, status=http_status.HTTP_200_OK)
+
+
+
+
+class ActiveIRNInvoiceListView(APIView):
+
+    def get(self, request):
+        invoices = Invoice.objects.filter(irn_status="ACT").order_by("-id")
+
+        serializer = InvoiceSerializer(invoices, many=True)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )

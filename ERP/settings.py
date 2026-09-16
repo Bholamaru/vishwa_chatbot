@@ -184,6 +184,7 @@ REST_FRAMEWORK = {
 
 
 
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=365*10),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
@@ -216,13 +217,14 @@ environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 # Add to your Django settings.py — pull real values from environment
 # variables (e.g. via django-environ or os.environ), never commit them.
 
-EINVOICE_BASE_URL = env("EINVOICE_BASE_URL", default="https://staging.perione.in/einvoice")
+EINVOICE_BASE_URL = env("EINVOICE_BASE_URL")
 EINVOICE_EMAIL = env("EINVOICE_EMAIL")
 EINVOICE_USERNAME = env("EINVOICE_USERNAME")
 EINVOICE_PASSWORD = env("EINVOICE_PASSWORD")
 EINVOICE_CLIENT_ID = env("EINVOICE_CLIENT_ID")
 EINVOICE_CLIENT_SECRET = env("EINVOICE_CLIENT_SECRET")
 EINVOICE_GSTIN = env("EINVOICE_GSTIN")
+EINVOICE_ENVIRONMENT = env("EINVOICE_ENVIRONMENT", default="production")  # "sandbox" | "production"
 
 
 EINVOICE_SELLER_LEGAL_NAME = env("EINVOICE_SELLER_LEGAL_NAME") 
