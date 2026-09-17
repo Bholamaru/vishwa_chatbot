@@ -926,15 +926,29 @@ class ItemTableSerializer3(serializers.ModelSerializer):
 # Item Search Api With BOM
 class ItemSearchSerializer5(serializers.ModelSerializer):
     bom_items = serializers.SerializerMethodField()
+    taxdetails = serializers.SerializerMethodField()
 
     class Meta:
         model = ItemTable
-        fields = ['id', 'part_no', 'Part_Code', 'Name_Description', 'Rate', 'Item_Size', 'HSN_SAC_Code', 'Unit_Code', 'bom_items']
+        fields = ['id', 'part_no', 'Part_Code', 'Name_Description', 'Rate', 'Item_Size', 'HSN_SAC_Code', 'taxdetails', 'Unit_Code', 'bom_items']
 
     def get_bom_items(self, obj):
         if obj.main_group in ['RM', 'FG']:
             bom_items = obj.bom_items.all()
             return BOMItemSerializer(bom_items, many=True).data
+        return None
+
+    def get_taxdetails(self, obj):
+        if not obj.HSN_SAC_Code:
+            return None
+
+        tax_detail = TaxDetails.objects.filter(
+            HSN_SAC_Code=obj.HSN_SAC_Code
+        ).first()
+
+        if tax_detail:
+            return GSTMasterSerializer(tax_detail).data
+
         return None
 
 # RM Search Api
