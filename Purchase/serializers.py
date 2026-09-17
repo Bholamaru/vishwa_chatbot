@@ -195,11 +195,41 @@ class ItemSerializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from .models import PurchasePO, GSTDetails, ItemDetailsOther, ScheduleLine, ShipToAdd, ItemDetail
 
-
+from All_Masters.models import TaxDetails
+from All_Masters.serializers import GSTMasterSerializer
 class Item_Detail_EnterSerializer(serializers.ModelSerializer):
+    taxdetails = serializers.SerializerMethodField()
+
     class Meta:
         model = ItemDetail
         fields = '__all__'
+
+    def get_hsn_sac_code(self, obj):
+        item = ItemTable.objects.filter(
+            part_no=obj.Item
+        ).first()
+
+        if item:
+            return item.HSN_SAC_Code
+
+        return None
+
+    def get_taxdetails(self, obj):
+        item = ItemTable.objects.filter(
+            part_no=obj.Item
+        ).first()
+
+        if not item or not item.HSN_SAC_Code:
+            return None
+
+        tax_detail = TaxDetails.objects.filter(
+            HSN_SAC_Code=item.HSN_SAC_Code
+        ).first()
+
+        if tax_detail:
+            return GSTMasterSerializer(tax_detail).data
+
+        return None
 
 class GSTDetailsSerializer(serializers.ModelSerializer):
     class Meta:
@@ -347,7 +377,7 @@ class NewJobWorkItemDetailsSerializer(serializers.ModelSerializer):
         # fields = '__all__'
        
         fields = [
-            'id', 'purchase_order','ItemName', 'item_type', 'ItemDescription',
+            'id', 'purchase_order','ItemName','SacCode', 'item_type', 'ItemDescription',
             'OutAndInPart', 'Rate', 'Disc', 'Qty', 'Unit', 'Particular',
             'Version', 'ItemStatus', 'CSCode', 'Note'
         ]

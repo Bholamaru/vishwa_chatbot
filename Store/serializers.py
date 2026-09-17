@@ -391,10 +391,42 @@ class GeneralDetailsLimitedSerializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from Purchase.models import PurchasePO, ItemDetail, GSTDetails
 
+from All_Masters.models import TaxDetails
+from All_Masters.serializers import GSTMasterSerializer
+
 class ItemDetailSerializer(serializers.ModelSerializer):
+    taxdetails = serializers.SerializerMethodField()
+    
     class Meta:
         model = ItemDetail
         fields = '__all__'
+
+    def get_hsn_sac_code(self, obj):
+        item = ItemTable.objects.filter(
+            part_no=obj.Item
+        ).first()
+
+        if item:
+            return item.HSN_SAC_Code
+
+        return None
+
+    def get_taxdetails(self, obj):
+        item = ItemTable.objects.filter(
+            part_no=obj.Item
+        ).first()
+
+        if not item or not item.HSN_SAC_Code:
+            return None
+
+        tax_detail = TaxDetails.objects.filter(
+            HSN_SAC_Code=item.HSN_SAC_Code
+        ).first()
+
+        if tax_detail:
+            return GSTMasterSerializer(tax_detail).data
+
+        return None
 
 class GSTDetailSerializer(serializers.ModelSerializer):
     class Meta:
