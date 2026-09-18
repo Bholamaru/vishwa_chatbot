@@ -160,7 +160,7 @@ class CustomerDescriptionSummary(APIView):
 
         data = (
             queryset
-            .values('customer', 'description')
+            .values('customer', 'description','part_code','part_no')
             .annotate(
                 total_po_qty=Sum(Cast('po_qty', IntegerField())),
                 total_assessable_value=Sum('invoice__GSTdetails__assessble_value')

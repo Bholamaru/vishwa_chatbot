@@ -568,6 +568,159 @@ from .models import *
 from .utils import fill_invoice_buyer_details
 
 
+# class InvoiceViewSet(viewsets.ModelViewSet):
+#     queryset = Invoice.objects.all()
+#     serializer_class = InvoiceSerializer
+
+#     def create(self, request, *args, **kwargs):
+
+#         serializer = self.get_serializer(data=request.data)
+
+#         if not serializer.is_valid():
+#             print("❌ VALIDATION ERRORS →", serializer.errors)
+#             return Response(
+#                 serializer.errors,
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         # Create Invoice
+#         self.perform_create(serializer)
+
+#         # Get created Invoice instance
+#         invoice = serializer.instance
+
+#         # Fill buyer details from Item
+#         fill_invoice_buyer_details(invoice)
+
+#         # Refresh object so response contains updated values
+#         invoice.refresh_from_db()
+
+#         # Return updated invoice
+#         response_serializer = self.get_serializer(invoice)
+
+#         return Response(
+#             response_serializer.data,
+#             status=status.HTTP_201_CREATED
+#         )
+
+
+# class InvoiceViewSet(viewsets.ModelViewSet):
+#     queryset = Invoice.objects.all()
+#     serializer_class = InvoiceSerializer
+
+#     def create(self, request, *args, **kwargs):
+
+#         serializer = self.get_serializer(data=request.data)
+
+#         if not serializer.is_valid():
+#             print("❌ VALIDATION ERRORS →", serializer.errors)
+#             return Response(
+#                 serializer.errors,
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         # Create Invoice
+#         self.perform_create(serializer)
+
+#         # Get created Invoice instance
+#         invoice = serializer.instance
+
+#         # Fill buyer details from Item
+#         fill_invoice_buyer_details(invoice)
+
+#         # Refresh object so response contains updated values
+#         invoice.refresh_from_db()
+
+#         # Return updated invoice
+#         response_serializer = self.get_serializer(invoice)
+
+#         return Response(
+#             response_serializer.data,
+#             status=status.HTTP_201_CREATED
+#         )
+
+#     def update(self, request, *args, **kwargs):
+
+#         # Get existing invoice
+#         invoice = self.get_object()
+
+#         # Validate incoming data
+#         serializer = self.get_serializer(
+#             invoice,
+#             data=request.data
+#         )
+
+#         if not serializer.is_valid():
+#             print("❌ UPDATE VALIDATION ERRORS →", serializer.errors)
+#             return Response(
+#                 serializer.errors,
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         # Update Invoice
+#         self.perform_update(serializer)
+
+#         # Get updated invoice instance
+#         invoice = serializer.instance
+
+#         # Fill buyer details again after update
+#         fill_invoice_buyer_details(invoice)
+
+#         # Refresh object
+#         invoice.refresh_from_db()
+
+#         # Return updated invoice
+#         response_serializer = self.get_serializer(invoice)
+
+#         return Response(
+#             response_serializer.data,
+#             status=status.HTTP_200_OK
+#         )
+
+#     def partial_update(self, request, *args, **kwargs):
+
+#         # Get existing invoice
+#         invoice = self.get_object()
+
+#         # PATCH allows partial data
+#         serializer = self.get_serializer(
+#             invoice,
+#             data=request.data,
+#             partial=True
+#         )
+
+#         if not serializer.is_valid():
+#             print("❌ PATCH VALIDATION ERRORS →", serializer.errors)
+#             return Response(
+#                 serializer.errors,
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         # Update Invoice
+#         self.perform_update(serializer)
+
+#         # Get updated invoice instance
+#         invoice = serializer.instance
+
+#         # Fill buyer details again
+#         fill_invoice_buyer_details(invoice)
+
+#         # Refresh object
+#         invoice.refresh_from_db()
+
+#         # Return updated invoice
+#         response_serializer = self.get_serializer(invoice)
+
+#         return Response(
+#             response_serializer.data,
+#             status=status.HTTP_200_OK
+#         )
+
+
+
+
+
+
 class InvoiceViewSet(viewsets.ModelViewSet):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
@@ -583,25 +736,59 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Create Invoice
         self.perform_create(serializer)
 
-        # Get created Invoice instance
         invoice = serializer.instance
 
-        # Fill buyer details from Item
         fill_invoice_buyer_details(invoice)
 
-        # Refresh object so response contains updated values
         invoice.refresh_from_db()
 
-        # Return updated invoice
         response_serializer = self.get_serializer(invoice)
 
         return Response(
             response_serializer.data,
             status=status.HTTP_201_CREATED
         )
+
+    def update(self, request, *args, **kwargs):
+
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+
+        serializer = self.get_serializer(
+            instance,
+            data=request.data,
+            partial=partial
+        )
+
+        if not serializer.is_valid():
+            print("❌ VALIDATION ERRORS →", serializer.errors)
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        self.perform_update(serializer)
+
+        invoice = serializer.instance
+
+        # Keep buyer details in sync if item/part details changed
+        fill_invoice_buyer_details(invoice)
+
+        invoice.refresh_from_db()
+
+        response_serializer = self.get_serializer(invoice)
+
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_200_OK
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        # PATCH support — reuses update() above with partial=True
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
 
 
 
