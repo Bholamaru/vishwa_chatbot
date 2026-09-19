@@ -100,4 +100,10 @@ urlpatterns = router.urls + [
     RecentApprovedPurchasePOView.as_view(),
     name='recent-approved-purchase-po'
 ),
+
+path(
+        "recently-approved-jobworkpo/",
+        RecentlyApprovedPOAPIView.as_view(),
+        name="recently-approved-po"
+    ),
 ]

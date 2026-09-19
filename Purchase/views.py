@@ -442,30 +442,6 @@ class RegisterPO(APIView):
 
         data = request.data
 
-        # field = data.get('field')
-        # PoNo = data.get('PoNo')
-        # EnquiryNo = data.get('EnquiryNo')
-
-        # # Validate that required fields are provided
-        # if not field or not PoNo or not EnquiryNo:
-        #     return Response({'error': 'Field, PoNo, and EnquiryNo are required.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        # # Extract the year from PoNo (assuming it's the first 4 digits)
-        # year = PoNo[:4]
-
-        # # Get the latest code for the specified field and year
-        # latest_purchase = PurchasePO.objects.filter(field=field, PoNo__startswith=year).aggregate(Max('PoNo'))
-        # latest_code = latest_purchase['PoNo__max']
-
-        # # Generate next code based on the PoNo format
-        # if latest_code:
-        #     latest_number = int(latest_code[4:])
-        #     next_code_number = latest_number + 1
-        # else:
-        #     next_code_number = 1
-
-        # next_code = f'{year}{str(next_code_number).zfill(3)}'
-        # data['PoNo'] = next_code  # Update the PoNo with the generated code
 
         # Serialize the data and create the PurchasePO
         serializer = OOPurchaseSerializer(data=data)
@@ -476,11 +452,39 @@ class RegisterPO(APIView):
             print(serializer.errors)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    # def get(self, request):
+    #     # GET method to retrieve all PurchasePO records along with related PurchasePODetails
+    #     po_info = PurchasePO.objects.all()
+    #     serializer = OOPurchaseSerializer(po_info, many=True)
+    #     return Response(serializer.data, status=status.HTTP_200_OK)
     def get(self, request):
-        # GET method to retrieve all PurchasePO records along with related PurchasePODetails
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+
         po_info = PurchasePO.objects.all()
+
+        # Date range filter
+        if start_date and end_date:
+            po_info = po_info.filter(
+                PoDate__range=[start_date, end_date]
+            )
+
+        elif start_date:
+            po_info = po_info.filter(
+                PoDate__gte=start_date
+            )
+
+        elif end_date:
+            po_info = po_info.filter(
+                PoDate__lte=end_date
+            )
+
         serializer = OOPurchaseSerializer(po_info, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
     
 from datetime import date
 from dateutil.relativedelta import relativedelta
@@ -1641,7 +1645,60 @@ class NewJobWorkPoInfoViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
     
+    def get_queryset(self):
+        queryset = NewJobWorkPoInfo.objects.all()
 
+        # -----------------------------
+        # String filters
+        # -----------------------------
+        filters = {
+            "PoNo__icontains": self.request.GET.get("po_no"),
+            "Supplier__icontains": self.request.GET.get("supplier"),
+            "Plant__icontains": self.request.GET.get("plant"),
+            "PoType__icontains": self.request.GET.get("po_type"),
+            "Series__icontains": self.request.GET.get("series"),
+            "PaymentTerm__icontains": self.request.GET.get("payment_term"),
+        }
+
+        for key, value in filters.items():
+            if value:
+                queryset = queryset.filter(**{key: value})
+
+        # -----------------------------
+        # Date filters
+        # -----------------------------
+        po_date_from = self.request.GET.get("po_date_from")
+        po_date_to = self.request.GET.get("po_date_to")
+
+        if po_date_from:
+            try:
+                po_date_from_parsed = datetime.strptime(
+                    po_date_from,
+                    "%Y-%m-%d"
+                ).date()
+
+                queryset = queryset.filter(
+                    PoDate__gte=po_date_from_parsed
+                )
+
+            except ValueError:
+                return NewJobWorkPoInfo.objects.none()
+
+        if po_date_to:
+            try:
+                po_date_to_parsed = datetime.strptime(
+                    po_date_to,
+                    "%Y-%m-%d"
+                ).date()
+
+                queryset = queryset.filter(
+                    PoDate__lte=po_date_to_parsed
+                )
+
+            except ValueError:
+                return NewJobWorkPoInfo.objects.none()
+
+        return queryset
 
 def generate_po_pdf(request, pk):
     po = get_object_or_404(NewJobWorkPoInfo, pk=pk)
@@ -1757,6 +1814,7 @@ class NewJobWorkPoInfoAPIView(APIView):
                 "PoDate": po.PoDate,
                 "PoType": po.PoType,
                 "Name": supplier_name,
+                "code_no":po.code_no,
                 "number": supplier_number,
                 "User": po.created_by.username if po.created_by else None,
                 "View": f"/Purchase/purchase-order/pdf/{po.id}/",
@@ -2773,3 +2831,37 @@ class PendingJobWorkPOList(APIView):
         serializer = NewJobWorkPoInfoSerializer(pending_pos, many=True)
 
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+from datetime import timedelta
+from django.utils import timezone
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework_simplejwt.authentication import JWTAuthentication
+
+from .models import NewJobWorkPoInfo
+from .serializers import NewJobWorkPoInfoSerializer
+
+
+class RecentlyApprovedPOAPIView(APIView):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        one_month_ago = timezone.now() - timedelta(days=30)
+
+        queryset = NewJobWorkPoInfo.objects.filter(
+            status="Approved",
+            approved_at__gte=one_month_ago
+        ).order_by("-approved_at")
+
+        serializer = NewJobWorkPoInfoSerializer(
+            queryset,
+            many=True
+        )
+
+        return Response({
+            "count": queryset.count(),
+            "results": serializer.data
+        })
