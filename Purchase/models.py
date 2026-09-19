@@ -627,6 +627,7 @@ class NewJobWorkPoInfo(models.Model):
     Plant = models.CharField(max_length=100, blank=True, null=True)
     Series = models.CharField(max_length=100, blank=True, null=True)
     Supplier = models.CharField(max_length=100, blank=True, null=True)
+    code_no = models.CharField(max_length=100,blank=True,null=True)
     PoNo = models.CharField(max_length=100, blank=True, null=True)
     PaymentTerm = models.CharField(max_length=100, blank=True, null=True)
     QuotNo = models.CharField(max_length=100, blank=True, null=True)
