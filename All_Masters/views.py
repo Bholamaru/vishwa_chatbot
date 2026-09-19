@@ -488,6 +488,18 @@ class Work_Center_ListCreate(generics.ListCreateAPIView):
     queryset = Work_Center_Model.objects.all()
     serializer_class = Work_Center_Serializer
 
+    def get_queryset(self):
+        queryset = Work_Center_Model.objects.all()
+
+        work_center_type = self.request.query_params.get("q")
+
+        if work_center_type:
+            queryset = queryset.filter(
+                WorkCenterType__icontains=work_center_type
+            )
+
+        return queryset
+
 class Work_Center_RetrieveUpdateDestroy(generics.RetrieveUpdateDestroyAPIView):
     queryset = Work_Center_Model.objects.all()
     serializer_class = Work_Center_Serializer
@@ -534,6 +546,17 @@ class Shift_Master_RetrieveUpdateDestroy(generics.RetrieveUpdateDestroyAPIView):
 class Add_New_Operator_ListCreate(generics.ListCreateAPIView):
     queryset = Add_New_Operator_Model.objects.all()
     serializer_class = Add_New_Operator_Serializer
+
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        name = self.request.query_params.get("q")
+
+        if name:
+            queryset = queryset.filter(Name__icontains=name)
+
+        return queryset
 
 class Add_New_Operator_RetrieveUpdateDestroy(generics.RetrieveUpdateDestroyAPIView):
     queryset =Add_New_Operator_Model.objects.all()
@@ -591,6 +614,16 @@ class Unit_Conversion_RetrieveUpdateDestroy(generics.RetrieveUpdateDestroyAPIVie
 class Contractor_Master_ListCreate(generics.ListCreateAPIView):
     queryset = Contractor_Master_Model.objects.all()
     serializer_class = ContractorMaster_Serializer
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+
+        name = self.request.query_params.get("q")
+
+        if name:
+            queryset = queryset.filter(ContractorName__icontains=name)
+
+        return queryset
 
 class Contractor_Master_RetrieveUpdateDestroy(generics.RetrieveUpdateDestroyAPIView):
     queryset = Contractor_Master_Model.objects.all()

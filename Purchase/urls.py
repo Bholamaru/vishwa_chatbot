@@ -95,4 +95,9 @@ urlpatterns = router.urls + [
         PendingJobWorkPOList.as_view(),
         name="pending-jobwork-po"
     ),
+    path(
+    'recent-approved-purchase-po/',
+    RecentApprovedPurchasePOView.as_view(),
+    name='recent-approved-purchase-po'
+),
 ]

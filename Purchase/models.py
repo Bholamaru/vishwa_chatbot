@@ -519,6 +519,7 @@ class Indent(models.Model):
     WorkOrder = models.CharField(max_length=255, blank=True, null=True)
     Remark = models.CharField(max_length=255, blank=True, null=True)
     Auth = models.CharField(max_length=10, choices=AUTH_CHOICES, default='Pending')
+    user = models.CharField(max_length=100,blank=True,null=True)
 
     def __str__(self):
         return f"{self.Plant} - {self.IndentNo}"

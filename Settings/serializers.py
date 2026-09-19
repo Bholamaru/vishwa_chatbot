@@ -86,7 +86,7 @@ class FinancialYearSerializer(serializers.ModelSerializer):
 from Planning.serializers import ProductionScheduleSerializer
 from Planning.models import ProductionSchedule
 class ScheduleMonthSerializer(serializers.ModelSerializer):
-    production_schedules = ProductionScheduleSerializer(many=True, required=False)
+    production_schedules = ProductionScheduleSerializer(many=True,  read_only=True)
 
     class Meta:
         model = ScheduleMonthMaster
