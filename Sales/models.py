@@ -305,7 +305,7 @@ class NewSalesOrder(models.Model):
     site_name=models.CharField(max_length=100,null=True ,blank=True)
     project_name=models.CharField(max_length=100, blank=True,null=True)
     terms= models.CharField(max_length=100,blank=True, null=True)
-
+    user = models.CharField(max_length=100,blank=True,null=True)
 
 class NewSalesItemdetails(models.Model):
     newsaleoreder=models.ForeignKey(NewSalesOrder,on_delete=models.CASCADE,related_name='item')

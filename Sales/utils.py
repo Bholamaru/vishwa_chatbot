@@ -107,29 +107,56 @@ def create_sales_return_no():
             return sales_return_no
     raise ValueError("No available sales_return_no number left for the current year range")
 
+# from .models import NewSalesOrder
+# def create_so_no():
+#     current_year=datetime.now().year % 100
+#     next_year=(datetime.now().year +1)% 100
+#     prefix = f'{current_year:02d}{next_year:02d}'
+#     for counter in range(1, 10000):
+#         so_no=f"{prefix}{counter:05d}"
+#         if not NewSalesOrder.objects.filter(so_no=so_no).exists():
+#             return so_no
+#     raise ValueError("No available so_no number left for the current year range")
+
+from datetime import datetime
 from .models import NewSalesOrder
+
+
 def create_so_no():
-    current_year=datetime.now().year % 100
-    next_year=(datetime.now().year +1)% 100
-    prefix = f'{current_year:02d}{next_year:02d}'
-    for counter in range(1, 10000):
-        so_no=f"{prefix}{counter:05d}"
-        if not NewSalesOrder.objects.filter(so_no=so_no).exists():
-            return so_no
-    raise ValueError("No available so_no number left for the current year range")
+    current_year = datetime.now().year % 100
+    next_year = (datetime.now().year + 1) % 100
+
+    prefix = f"SO{current_year:02d}{next_year:02d}"
+
+    last_so = (
+        NewSalesOrder.objects
+        .filter(so_no__startswith=prefix)
+        .order_by('-so_no')
+        .first()
+    )
+
+    if last_so and last_so.so_no:
+        last_number = int(last_so.so_no[len(prefix):])
+        counter = last_number + 1
+    else:
+        counter = 1
+
+    if counter >= 100000:
+        raise ValueError("No available SO number left for the current year range")
+
+    return f"{prefix}{counter:05d}"
 
 
 from .models import SalesRateDiff
 def create_debit_note_no():
     current_year = datetime.now().year % 100
     next_year =(datetime.now().year+1)% 100
-    prefix = f'{current_year:02d}{next_year:02d}'
+    prefix = f'SO{current_year:02d}{next_year:02d}'
     for counter in range (1,10000):
         debit_note_no=f"{prefix}{counter:05d}"
         if not SalesRateDiff.objects.filter(debit_note_no = debit_note_no).exists():
             return debit_note_no
     raise ValueError("No available debit_note_no number left for the current year range")
-
 
 
 from .models import GSTJobworkInvoice
