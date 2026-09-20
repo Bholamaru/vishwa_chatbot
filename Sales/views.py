@@ -808,7 +808,33 @@ class NewsalesOrederViewSet(viewsets.ModelViewSet):
         self.perform_create(serializer)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+class NewsalesOrederViewSet(viewsets.ModelViewSet):
+    queryset = NewSalesOrder.objects.all()
+    serializer_class = NewSalesOrderSerializer
 
+    def get_queryset(self):
+        queryset = NewSalesOrder.objects.all()
+
+        customer = self.request.query_params.get('customer')
+        from_date = self.request.query_params.get('from_date')
+        to_date = self.request.query_params.get('to_date')
+
+        if customer:
+            queryset = queryset.filter(
+                customer__icontains=customer
+            )
+
+        if from_date:
+            queryset = queryset.filter(
+                so_date__gte=from_date
+            )
+
+        if to_date:
+            queryset = queryset.filter(
+                so_date__lte=to_date
+            )
+
+        return queryset
 
 from All_Masters.models import Item
 class CustomerItemListView(APIView):

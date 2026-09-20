@@ -3824,7 +3824,8 @@ def generate_jobwork_inward_challan_pdf(request, pk):
     # Split ItemCode into parts
     for item in items:
         if item.ItemCode:
-            parts = [p.strip() for p in item.ItemCode.split("-")]
+            # parts = [p.strip() for p in item.ItemCode.split("|" or "-")]
+            parts = [p.strip() for p in re.split(r"[|-]", item.ItemCode)]
             
             item.inward_part_code = parts[0] if len(parts) > 0 else ""
             item.item_description = parts[1] if len(parts) > 1 else ""
@@ -3851,6 +3852,8 @@ def generate_jobwork_inward_challan_pdf(request, pk):
     return response
 
 
+from decimal import Decimal
+from num2words import num2words
 
 def generate_dynamic_pdf(request):
     po_no = request.GET.get('po_no')
@@ -3868,25 +3871,52 @@ def generate_dynamic_pdf(request):
     ).first()
 
     if purchase_po:
+        item = Item2.objects.filter(number=purchase_po.CodeNo).first()
+
         item_details = list(purchase_po.Item_Detail_Enter.all())
         gst_details = list(purchase_po.Gst_Details.all())
-        combined_details = zip(item_details, gst_details)
+        combined_details = list(zip(item_details, gst_details))
 
-        total_gst_sum = sum([gst.Total for gst in gst_details if gst.Total])
+        total_gst_sum = sum(
+            (gst.Total or Decimal("0.00") for gst in gst_details),
+            Decimal("0.00")
+        )
+
+        total_ass_value = sum(
+            (gst.AssValue or Decimal("0.00") for gst in gst_details),
+            Decimal("0.00")
+        )
+
+        # GST total in words
+        integer_part = int(total_gst_sum)
+        words = num2words(integer_part, lang='en_IN').title()
+        gr_total_in_words = f"Rs. {words} Only"
 
         template = get_template('Purchase-order.html')
 
         html = template.render({
             'po': purchase_po,
+            'item': item,
             'item_details': item_details,
             'gst_details': gst_details,
             'combined_details': combined_details,
+
+            # These were missing in dynamic API
+            'other_details': purchase_po.Item_Details_Other.all(),
+            'schedule_lines': purchase_po.Schedule_Line.all(),
+            'ship_to_addresses': purchase_po.Ship_To_Add.all(),
+
+            'gr_total_in_words': gr_total_in_words,
             'total_gst_sum': total_gst_sum,
+            'total_ass_value': total_ass_value,
         })
 
         pdf = HTML(string=html).write_pdf()
-        return HttpResponse(pdf, content_type='application/pdf')
 
+        return HttpResponse(
+            pdf,
+            content_type='application/pdf'
+        )
     # 🔍 If not found → check Job Work
     jobwork_po = NewJobWorkPoInfo.objects.filter(
         PoNo=po_no,
