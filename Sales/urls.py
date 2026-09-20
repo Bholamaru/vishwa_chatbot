@@ -125,4 +125,10 @@ urlpatterns=router.urls+[
         ActiveIRNInvoiceListView.as_view(),
         name="active-irn-invoices"
     ),
+
+    path(
+        'sales-order/pdf/<int:pk>/',
+        generate_sales_order_pdf,
+        name='sales-order-pdf'
+    ),
 ]

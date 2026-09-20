@@ -3849,3 +3849,149 @@ class ActiveIRNInvoiceListView(APIView):
             serializer.data,
             status=status.HTTP_200_OK
         )
+
+
+import re
+from decimal import Decimal
+
+from django.shortcuts import get_object_or_404
+from django.http import HttpResponse
+from django.template.loader import get_template
+
+from weasyprint import HTML
+
+from .models import NewSalesOrder
+
+
+def generate_sales_order_pdf(request, pk):
+
+    sales_order = get_object_or_404(NewSalesOrder, pk=pk)
+
+    items = sales_order.item.all()
+
+    # -------------------------------------------------
+    # Customer Name
+    # Example:
+    # SHREE | C008
+    # -------------------------------------------------
+
+    customer_name = ""
+    customer_code = ""
+
+    if sales_order.customer:
+        customer_parts = [
+            p.strip()
+            for p in sales_order.customer.split("|")
+        ]
+
+        customer_name = (
+            customer_parts[0]
+            if len(customer_parts) > 0
+            else ""
+        )
+
+        customer_code = (
+            customer_parts[1]
+            if len(customer_parts) > 1
+            else ""
+        )
+
+    # -------------------------------------------------
+    # Calculate totals
+    # -------------------------------------------------
+
+    subtotal = Decimal("0.00")
+    assessable_value = Decimal("0.00")
+
+    cgst_amt = Decimal("0.00")
+    sgst_amt = Decimal("0.00")
+    igst_amt = Decimal("0.00")
+    utgst_amt = Decimal("0.00")
+
+    grand_total = Decimal("0.00")
+
+    for item in items:
+
+        subtotal += item.subtotal or Decimal("0.00")
+
+        assessable_value += (
+            item.assessable_value or Decimal("0.00")
+        )
+
+        cgst_amt += (
+            item.cgst_amt or Decimal("0.00")
+        )
+
+        sgst_amt += (
+            item.sgst_amt or Decimal("0.00")
+        )
+
+        igst_amt += (
+            item.igst_amt or Decimal("0.00")
+        )
+
+        utgst_amt += (
+            item.utgst_amt or Decimal("0.00")
+        )
+
+        grand_total += (
+            item.gr_total or Decimal("0.00")
+        )
+
+    # -------------------------------------------------
+    # Quantity total
+    # -------------------------------------------------
+
+    total_qty = Decimal("0.00")
+
+    for item in items:
+        try:
+            total_qty += Decimal(str(item.qty or 0))
+        except:
+            pass
+
+    # -------------------------------------------------
+    # Template
+    # -------------------------------------------------
+
+    template = get_template(
+        'Sales/customer_sales_order.html'
+    )
+
+    html_content = template.render({
+        'sales_order': sales_order,
+        'items': items,
+
+        # Customer
+        'customer_name': customer_name,
+        'customer_code': customer_code,
+
+        # Totals
+        'total_qty': total_qty,
+        'subtotal': subtotal,
+        'assessable_value': assessable_value,
+
+        'cgst_amt': cgst_amt,
+        'sgst_amt': sgst_amt,
+        'igst_amt': igst_amt,
+        'utgst_amt': utgst_amt,
+
+        'grand_total': grand_total,
+    })
+
+    pdf_file = HTML(
+        string=html_content
+    ).write_pdf()
+
+    response = HttpResponse(
+        pdf_file,
+        content_type='application/pdf'
+    )
+
+    response['Content-Disposition'] = (
+        f'inline; '
+        f'filename="CustomerSalesOrder_'
+        f'{sales_order.so_no or pk}.pdf"'
+    )
+
+    return response
