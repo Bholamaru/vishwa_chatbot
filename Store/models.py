@@ -180,14 +180,14 @@ class GrnGstTDC(models.Model):
     insurance = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     installation_charges = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     other_charges = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    Tds = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    cgst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
-    sgst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
-    igst = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
-    vat = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    Tds = models.DecimalField(max_digits=100, decimal_places=2, blank=True, null=True)
+    cgst = models.DecimalField(max_digits=15, decimal_places=2, default=0.00,blank=True,null=True)
+    sgst = models.DecimalField(max_digits=15, decimal_places=2, default=0.00,blank=True,null=True)
+    igst = models.DecimalField(max_digits=15, decimal_places=2, default=0.00,blank=True,null=True)
+    vat = models.DecimalField(max_digits=100, decimal_places=2, default=0.00,blank=True,null=True)
     cess_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     tcs_amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    grand_total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    grand_total = models.DecimalField(max_digits=100, decimal_places=2, default=0.00)
 
     def __str__(self):
         return f"Tax Details {self.id} - Grand Total: {self.grand_total}"
