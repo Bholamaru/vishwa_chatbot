@@ -847,6 +847,70 @@ class NewSalesOrderSerializer(serializers.ModelSerializer):
                 **item
             )
         return order
+    def update(self, instance, validated_data):
+
+        # Get nested items
+        items_data = validated_data.pop('item', None)
+
+        # -----------------------------------
+        # Update Sales Order fields
+        # -----------------------------------
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        # -----------------------------------
+        # Update Items
+        # -----------------------------------
+
+        if items_data is not None:
+
+            existing_item_ids = []
+
+            for item_data in items_data:
+
+                item_id = item_data.pop('id', None)
+
+                # Existing item → UPDATE
+                if item_id:
+
+                    item = NewSalesItemdetails.objects.filter(
+                        id=item_id,
+                        newsaleoreder=instance
+                    ).first()
+
+                    if item:
+
+                        for attr, value in item_data.items():
+                            setattr(item, attr, value)
+
+                        item.save()
+
+                        existing_item_ids.append(item.id)
+
+                # No ID → CREATE new item
+                else:
+
+                    new_item = NewSalesItemdetails.objects.create(
+                        newsaleoreder=instance,
+                        **item_data
+                    )
+
+                    existing_item_ids.append(new_item.id)
+
+            # -----------------------------------
+            # Delete removed items
+            # -----------------------------------
+
+            NewSalesItemdetails.objects.filter(
+                newsaleoreder=instance
+            ).exclude(
+                id__in=existing_item_ids
+            ).delete()
+
+        return instance
 
 from All_Masters.models import Item       
 class ItemSerializer(serializers.ModelSerializer):
