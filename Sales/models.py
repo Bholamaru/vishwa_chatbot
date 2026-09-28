@@ -317,6 +317,7 @@ class NewSalesItemdetails(models.Model):
     item_description=models.CharField(max_length=100,blank=True,null=True)
     rate=models.CharField(max_length=100,blank=True,null=True)
     desc=models.CharField(max_length=100,blank=True,null=True)
+    desc_amt= models.DecimalField(max_digits=12, decimal_places=2, default=0)
     qty=models.CharField(max_length=100,blank=True,null=True)
     uom=models.CharField(max_length=100,blank=True,null=True)
     rm_type=models.CharField(max_length=100,blank=True,null=True)
