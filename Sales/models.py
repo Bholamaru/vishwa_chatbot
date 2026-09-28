@@ -304,6 +304,10 @@ class NewSalesOrder(models.Model):
     sales_person=models.CharField(max_length=100,blank=True,null=True)
     site_name=models.CharField(max_length=100,null=True ,blank=True)
     project_name=models.CharField(max_length=100, blank=True,null=True)
+    pack_forward_charges= models.CharField(max_length=100,blank=True,null=True)
+    transport_charges =models.CharField(max_length=100,blank=True,null=True)
+    freight_charges= models.CharField(max_length=100,blank=True,null=True)
+    other_charges= models.CharField(max_length=100,blank=True,null=True)
     terms= models.CharField(max_length=100,blank=True, null=True)
     user = models.CharField(max_length=100,blank=True,null=True)
 
