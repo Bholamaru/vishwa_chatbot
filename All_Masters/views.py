@@ -2701,3 +2701,25 @@ class FGItemRMSearchView(APIView):
             status=status.HTTP_200_OK
 
         )
+
+class BOMDeleteAPI(APIView):
+    def delete(self, request, item_id):
+        bom_items = BOMItem.objects.filter(item_id=item_id)
+
+        if not bom_items.exists():
+            return Response(
+                {"error": "BOM not found for this item"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        deleted_count = bom_items.count()
+        bom_items.delete()
+
+        return Response(
+            {
+                "message": "Whole BOM deleted successfully",
+                "item_id": item_id,
+                "deleted_count": deleted_count
+            },
+            status=status.HTTP_200_OK
+        )
