@@ -129,6 +129,9 @@
         .bold {
             font-weight: bold;
         }
+        .pending-item td {
+    background-color: #fff2cc !important;
+        }
     </style>
 </head>
 
@@ -211,7 +214,7 @@
             </thead>
             <tbody>
                 {% for item, gst in combined_details %}
-                <tr>
+                <tr class="{% if is_pending %}pending-item{% endif %}">
                     <td>{{ gst.ItemCode }}</td>
                     <td>{{ item.ItemDescription }}</td>
                     <td>{{ gst.HSN }}</td>

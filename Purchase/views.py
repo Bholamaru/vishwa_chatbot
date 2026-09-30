@@ -824,6 +824,8 @@ def generate_item_pdf(request, pk):
     words = num2words(integer_part, lang='en_IN').title()
     gr_total_in_words = f"Rs. {words} Only"
 
+    is_pending = po.Approved_Status == "Pending"
+
     template = get_template('Purchase-order.html')
     context = {
         'po': po,
@@ -837,6 +839,7 @@ def generate_item_pdf(request, pk):
         'gr_total_in_words': gr_total_in_words,
         'total_gst_sum': total_gst_sum,  # ✅ new context variable
          'total_ass_value': total_ass_value,
+          'is_pending': is_pending,
     }
 
     html_content = template.render(context)
