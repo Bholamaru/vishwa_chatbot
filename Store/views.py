@@ -7226,3 +7226,9 @@ def get_rm_stock(request):
 
         "data": response_data
     })
+
+
+
+class DeliveryChallanViewSet(viewsets.ModelViewSet):
+    queryset = DeliveryChallan.objects.prefetch_related("items").all()
+    serializer_class = DeliveryChallanSerializer

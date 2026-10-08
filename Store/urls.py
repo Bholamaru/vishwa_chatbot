@@ -9,6 +9,7 @@ router.register(r'general-details', GeneralDetailsViewSet)
 router.register(r'New-MRN-Entry', NewMrnView)
 router.register(r'PurchaseGRN', GrnGenralDetailViewSet) 
 router.register(r'New-Material-Issue', MaterialChallanView)
+router.register(r"delivery-challans",DeliveryChallanViewSet,basename="delivery-challan")
 
 
 urlpatterns = [

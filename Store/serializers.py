@@ -1849,3 +1849,67 @@ class MaterialChallanSerializer(serializers.ModelSerializer):
             )
 
         return instance
+
+
+
+
+from rest_framework import serializers
+from .models import DeliveryChallan, DeliveryChallanItem
+from All_Masters.models import ItemTable
+
+
+class DeliveryChallanItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DeliveryChallanItem
+        fields = "__all__"
+        read_only_fields = ["delivery_challan"]
+    
+
+
+class DeliveryChallanSerializer(serializers.ModelSerializer):
+
+    items = DeliveryChallanItemSerializer(
+        many=True,
+        required=False
+    )
+
+    class Meta:
+        model = DeliveryChallan
+        fields = "__all__"
+
+    def create(self, validated_data):
+        items_data = validated_data.pop("items", [])
+
+        challan = DeliveryChallan.objects.create(
+            **validated_data
+        )
+
+        for item_data in items_data:
+            DeliveryChallanItem.objects.create(
+                delivery_challan=challan,
+                **item_data
+            )
+
+        return challan
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop("items", None)
+
+        # Update challan header
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        # Update items if provided
+        if items_data is not None:
+
+            instance.items.all().delete()
+
+            for item_data in items_data:
+                DeliveryChallanItem.objects.create(
+                    delivery_challan=instance,
+                    **item_data
+                )
+
+        return instance

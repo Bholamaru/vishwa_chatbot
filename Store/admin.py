@@ -30,6 +30,7 @@ admin.site.register(NewDCgrnTable)
 admin.site.register(InwardChallanGSTDetails)
 admin.site.register(JobworkInwardChallan)
 admin.site.register(JobworkInwardChallanTable)
+admin.site.register(DeliveryChallanItem)
 
 
 
