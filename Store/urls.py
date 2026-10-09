@@ -146,4 +146,9 @@ urlpatterns = [
             name="get_rm_jobwork_rm_items"
         ),
     path('DC_no/genrate/',GenerateDCNumberAPIView.as_view(),name='delivery-challan-no-genrater'),
+    path(
+        "delivery-challans/pdf/<int:pk>/",
+        generate_delivery_challan_pdf,
+        name="delivery-challan-pdf",
+    ),
 ]

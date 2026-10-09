@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Delivery Challan</title>
+
+    <style>
+        @page {
+            size: A4;
+            margin: 6mm;
+        }
+
+        html, body {
+            height: auto;
+        }
+
+        .page,
+        .page table,
+        .page tr {
+            page-break-inside: avoid;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 11px;
+            color: #000;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Outer border of the whole challan */
+        .page {
+            border: 1px solid #000;
+            width: 100%;
+        }
+
+        /* ---------- Header ---------- */
+        .header {
+            text-align: center;
+            padding: 4px 0 14px 0;
+            border-bottom: 1.5px solid #000;
+        }
+
+        .title {
+            font-size: 16px;
+            font-weight: bold;
+        }
+
+        .company {
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 2px;
+        }
+
+        .address {
+            font-size: 9px;
+            margin-top: 3px;
+        }
+
+        /* ---------- Customer / Challan details ---------- */
+        .details {
+            width: 100%;
+            border-collapse: collapse;
+            border-bottom: 1px solid #000;
+        }
+
+        .details td {
+            vertical-align: top;
+            padding: 4px 6px;
+            line-height: 1.5;
+        }
+
+        .details .left {
+            width: 63%;
+            border-right: 1px solid #000;
+        }
+
+        .details .right-box {
+            width: 37%;
+        }
+
+        .details .left .name {
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .kv {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .kv td {
+            padding: 3px 0;
+            border: none;
+        }
+
+        .kv .k { width: 50%; }
+        .kv .v { width: 50%; }
+        .kv .bold { font-weight: bold; font-size: 12px; }
+
+        /* ---------- Message strip ---------- */
+        .message {
+            padding: 3px 6px;
+            border-bottom: 1px solid #000;
+            font-size: 11px;
+        }
+
+        /* ---------- Items table ---------- */
+        .items {
+            width: 100%;
+            height: 150mm;              /* keeps column lines running down the page; lower this if it still spills to page 2 */
+            border-collapse: collapse;
+        }
+
+        .items th {
+            border-bottom: 1px solid #000;
+            border-right: 1px solid #000;
+            padding: 3px 4px;
+            text-align: center;
+            font-weight: normal;
+            font-size: 11px;
+        }
+
+        .items th:last-child,
+        .items td:last-child {
+            border-right: none;
+        }
+
+        .items td {
+            border-right: 1px solid #000;
+            padding: 3px 4px;
+            vertical-align: top;
+        }
+
+        .items tr.filler td {
+            height: 100%;               /* last row stretches to fill the page */
+            padding: 0;
+        }
+
+        .center { text-align: center; }
+        .right  { text-align: right; }
+
+        .description {
+            line-height: 1.5;
+        }
+
+        /* ---------- Footer ---------- */
+        .footer {
+            border-top: 1px solid #000;
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .footer td {
+            padding: 5px 6px;
+            vertical-align: top;
+        }
+
+        .footer .total {
+            text-align: right;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .transport {
+            line-height: 1.7;
+            padding-bottom: 8px;
+        }
+
+        .signatures {
+            width: 100%;
+            border-collapse: collapse;
+            border-top: 1px solid #000;
+            height: 20mm;
+        }
+
+        .signatures td {
+            width: 50%;
+            padding: 6px 10px;
+            vertical-align: bottom;
+            font-weight: bold;
+        }
+
+        .signatures .for-company {
+            text-align: left;
+            padding-left: 60px;
+        }
+
+        .signatures .sign-top {
+            vertical-align: top;
+        }
+    </style>
+</head>
+
+<body>
+<div class="page">
+
+    <!-- Company Header -->
+    <div class="header">
+        <div class="title">Delivery Challan</div>
+        <div class="company">Vishwa Samrudhi Industries</div>
+        <div class="address"> <p>Plot No.125 Gut NO . 125 Near M Sector, </p>
+         <P>Ambica Weigh Bridge M.I.D.C Wafuj Chh. Sambhaji Nagar</p></div>
+    </div>
+
+    <!-- Customer and Challan Details -->
+    <table class="details">
+        <tr>
+            <td class="left">
+                To,<br>
+                <span class="name">{{ challan.supplier|default:"" }}</span><br>
+                {% if challan.supplier_address %}{{ challan.supplier_address }}<br>{% endif %}
+                <strong>GSTIN No : {{ challan.customer_gstin|default:"" }}</strong><br>
+                State Code : {{ challan.customer_state_code|default:"" }}<br>
+                PAN No : {{ challan.customer_pan|default:"" }}
+            </td>
+
+            <td class="right-box">
+                <table class="kv">
+                    <tr>
+                        <td class="k bold">Challan No :</td>
+                        <td class="v bold">{{ challan.challan_no|default:"" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="k">Challan Date :</td>
+                        <td class="v">{{ challan.challan_date|date:"d/m/Y" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="k">Series :</td>
+                        <td class="v">{{ challan.dc_type|default:"" }}</td>
+                    </tr>
+                    <tr>
+                        <td class="k bold" colspan="2" style="padding-top: 8px;">
+                            GSTIN : 27AAMFS1149Q1ZH
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    <div class="message">
+        Please receive the following items in good condition and return the duplicate duly signed by you.
+    </div>
+
+    <!-- Item Details -->
+    <table class="items">
+        <thead>
+            <tr>
+                <th style="width: 6%;">Sr.<br>No</th>
+                <th style="width: 12%;">Item code</th>
+                <th style="width: 38%;">Description</th>
+                <th style="width: 13%;">HSN No.</th>
+                <th style="width: 12%;">Total Qty.<br>Nos./ Kgs.</th>
+                <th style="width: 9%;">Rate</th>
+                <th style="width: 10%;">SubTotal</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for item in challan_items %}
+            <tr>
+                <td class="center">{{ forloop.counter }}</td>
+                <td>{{ item.item_code|default:"" }}</td>
+                <td class="description">{{ item.item_desc|default:""|linebreaksbr }}</td>
+                <td class="center">{{ item.hsn_code|default:"" }}</td>
+                <td class="right">
+                    {{ item.qty|default_if_none:0|floatformat:2 }}
+                    {{ item.unit|default:"" }}
+                </td>
+                <td class="right">{{ item.rate|default_if_none:0|floatformat:2 }}</td>
+                <td class="right">
+                    {% widthratio item.qty 1 item.rate as subtotal %}
+                    {{ subtotal|default:"0.00" }}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7" class="center">No items available</td>
+            </tr>
+            {% endfor %}
+
+            <!-- Filler row: stretches so vertical lines reach the bottom -->
+            <tr class="filler">
+                <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Total + Transport -->
+    <table class="footer">
+        <tr>
+            <td>Received the above article in good condition</td>
+            <td class="total">Total Amount : {{ challan.grand_total|default_if_none:0|floatformat:0 }}</td>
+        </tr>
+        <tr>
+            <td colspan="2" class="transport">
+                Vehicle No : {{ challan.vehical_no|default:"" }}<br>
+                Transporter Name : {{ challan.transport|default:"" }}<br>
+                Department : {{ challan.deparment|default:"" }}
+            </td>
+        </tr>
+    </table>
+
+    <!-- Signatures -->
+    <table class="signatures">
+        <tr>
+            <td class="sign-top"></td>
+            <td class="sign-top for-company">for SHARP ENGINEERS</td>
+        </tr>
+        <tr>
+            <td>Receiver's Signature</td>
+            <td class="for-company">Delivered by</td>
+        </tr>
+    </table>
+
+</div>
+</body>
+</html>

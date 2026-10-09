@@ -7258,3 +7258,55 @@ class GenerateDCNumberAPIView(APIView):
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+
+# delivery_challan_pdf.py
+
+from io import BytesIO
+from decimal import Decimal
+
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
+
+from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny
+
+from django.shortcuts import get_object_or_404
+from django.template.loader import get_template
+from django.http import HttpResponse
+
+from weasyprint import HTML
+
+from .models import DeliveryChallan
+
+def generate_delivery_challan_pdf(request, pk):
+    challan = get_object_or_404(
+        DeliveryChallan.objects.prefetch_related("items"),
+        pk=pk
+    )
+
+    challan_items = challan.items.all()
+
+    template = get_template("DeliveryChallan.html")
+
+    html_content = template.render({
+        "challan": challan,
+        "challan_items": challan_items,
+    }, request=request)
+
+    pdf_file = HTML(
+        string=html_content,
+        base_url=request.build_absolute_uri("/")
+    ).write_pdf()
+
+    response = HttpResponse(
+        pdf_file,
+        content_type="application/pdf"
+    )
+
+    response["Content-Disposition"] = (
+        f'inline; filename="Delivery_Challan_{pk}.pdf"'
+    )
+
+    return response
