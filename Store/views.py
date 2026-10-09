@@ -7232,3 +7232,29 @@ def get_rm_stock(request):
 class DeliveryChallanViewSet(viewsets.ModelViewSet):
     queryset = DeliveryChallan.objects.prefetch_related("items").all()
     serializer_class = DeliveryChallanSerializer
+
+
+
+
+from .utils import create_dc_number
+class GenerateDCNumberAPIView(APIView):
+    def get(self, request):
+        try:
+            dc_no = create_dc_number()
+
+            return Response(
+                {
+                    "success": True,
+                    "dc_series": dc_no
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except ValueError as e:
+            return Response(
+                {
+                    "success": False,
+                    "message": str(e)
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )

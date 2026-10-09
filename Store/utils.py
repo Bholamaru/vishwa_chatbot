@@ -90,3 +90,42 @@ def create_rm_number():
     raise ValueError(
         "No available RM numbers left for the current financial year."
     )
+
+
+from datetime import datetime
+from .models import DeliveryChallan
+
+
+def create_dc_number():
+    now = datetime.now()
+
+    # Financial year: April to March
+    if now.month >= 4:
+        current_year = now.year % 100
+        next_year = (now.year + 1) % 100
+    else:
+        current_year = (now.year - 1) % 100
+        next_year = now.year % 100
+
+    prefix = f"DC-{current_year:02d}{next_year:02d}"
+
+    # Find highest number for current financial year
+    last_challan = (
+        DeliveryChallan.objects
+        .filter(dc_series__startswith=prefix)
+        .order_by("-dc_series")
+        .first()
+    )
+
+    if last_challan and last_challan.dc_series:
+        last_number = int(last_challan.dc_series[-5:])
+        next_number = last_number + 1
+    else:
+        next_number = 1
+
+    if next_number > 99999:
+        raise ValueError(
+            "No available Delivery Challan numbers for this financial year."
+        )
+
+    return f"{prefix}{next_number:05d}"

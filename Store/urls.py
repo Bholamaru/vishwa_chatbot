@@ -145,5 +145,5 @@ urlpatterns = [
            get_rm_stock,
             name="get_rm_jobwork_rm_items"
         ),
-    
+    path('DC_no/genrate/',GenerateDCNumberAPIView.as_view(),name='delivery-challan-no-genrater'),
 ]
