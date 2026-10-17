@@ -1469,3 +1469,64 @@ class GenerateReworkNoAPIView(APIView):
             {"rework_no": rework_no},
             status=status.HTTP_200_OK
         )
+
+from django.db.models import Sum, IntegerField
+from django.db.models.functions import Cast
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+from Quality.models import (
+    InwardtestQCinfo,
+    InwardtestreworkQty,
+    InwardtestrejectQty,
+)
+
+
+class InwardQCReworkRejectByOpNoAPIView(APIView):
+
+    def get(self, request):
+        opno = request.query_params.get("opno")
+
+        if not opno:
+            return Response(
+                {"status": False, "message": "opno is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        qc_records = InwardtestQCinfo.objects.filter(opno=opno)
+
+        result = []
+
+        heat_numbers = (
+            qc_records.values_list("heat_no", flat=True)
+            .distinct()
+        )
+
+        for heat_no in heat_numbers:
+            heat_qcs = qc_records.filter(heat_no=heat_no)
+
+            rework_total = (
+                InwardtestreworkQty.objects
+                .filter(qc__in=heat_qcs)
+                .annotate(qty_int=Cast("qty", IntegerField()))
+                .aggregate(total=Sum("qty_int"))["total"] or 0
+            )
+
+            reject_total = (
+                InwardtestrejectQty.objects
+                .filter(qc__in=heat_qcs)
+                .annotate(qty_int=Cast("qty", IntegerField()))
+                .aggregate(total=Sum("qty_int"))["total"] or 0
+            )
+
+            result.append({
+                "heat_no": heat_no,
+                "rework_qty": rework_total,
+                "reject_qty": reject_total,
+            })
+
+        return Response(
+            {"status": True, "data": result},
+            status=status.HTTP_200_OK
+        )
