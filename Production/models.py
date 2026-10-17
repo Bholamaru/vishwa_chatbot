@@ -540,3 +540,36 @@ class NewWorkOrderItem(models.Model):  # Renamed Item2 to MachineIdleTimeAss
 
     def _str_(self):
         return self.Item_number
+
+
+
+
+# models.py
+
+from django.db import models
+
+
+class ReworkProduction(models.Model):
+    rework_no = models.CharField(max_length=100, blank=True, null=True)
+    rework_date = models.DateField(blank=True, null=True)
+    rework_time = models.TimeField(blank=True, null=True)
+    machine = models.CharField(max_length=200, blank=True, null=True)
+    work_order = models.CharField(max_length=100, blank=True, null=True)
+    reason_for_rework = models.TextField(blank=True, null=True)
+    quality_remark = models.TextField(blank=True, null=True)
+    operator = models.CharField(max_length=200, blank=True, null=True)
+
+    def __str__(self):
+        return self.rework_no or f"Rework {self.pk}"
+
+
+class ReworkProdcutionItem(models.Model):
+    rework_production = models.ForeignKey(ReworkProduction,on_delete=models.CASCADE,related_name="items")
+    item_des = models.CharField(max_length=500, blank=True, null=True)
+    bom_part = models.CharField(max_length=500, blank=True, null=True)
+    heat_code = models.CharField(max_length=200, blank=True, null=True)
+    rework_to_ok = models.DecimalField(max_digits=50, decimal_places=4, default=0)
+    reject_to_ok = models.DecimalField(max_digits=50, decimal_places=2, blank=True, null=True)
+
+    def __str__(self):
+        return self.item_des or f"Rework item {self.pk}"

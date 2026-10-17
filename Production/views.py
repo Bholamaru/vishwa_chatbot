@@ -1449,3 +1449,10 @@ class HeatSummaryAPIView(APIView):
                     response[op][heat] = qty
 
         return Response(response, status=status.HTTP_200_OK)
+
+
+from .models import ReworkProduction
+from .serializers import ReworkProductionSerializer
+class ReworkProductionViewSet(viewsets.ModelViewSet):
+    queryset = ReworkProduction.objects.prefetch_related("items").all()
+    serializer_class = ReworkProductionSerializer

@@ -11,6 +11,7 @@ router.register(r'ProductionRecord', ProductionRecordViewSet)
 router.register(r'FGScrapDetails',FGScrapDetailsViewSet)
 router.register(r'ScrapLineRejectionNote',ScrapRejectionNoteViewSet)
 router.register(r'work-order-entry', WorkOrderView)
+router.register(r'rework-production',ReworkProductionViewSet,basename="rework-production")
 
 urlpatterns = [
     path('api/', include(router.urls)),

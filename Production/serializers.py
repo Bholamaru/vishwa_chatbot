@@ -2888,3 +2888,69 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
 
         print("✅ OOPurchaseSerializer.update() COMPLETED\n", flush=True)
         return instance
+
+
+
+# serializers.py
+
+from rest_framework import serializers
+from .models import ReworkProduction, ReworkProdcutionItem
+
+
+class ReworkProdcutionItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ReworkProdcutionItem
+        exclude = ["rework_production"]
+
+
+class ReworkProductionSerializer(serializers.ModelSerializer):
+    items = ReworkProdcutionItemSerializer(many=True, required=False)
+
+    class Meta:
+        model = ReworkProduction
+        fields = [
+            "id",
+            "rework_no",
+            "rework_date",
+            "rework_time",
+            "machine",
+            "work_order",
+            "reason_for_rework",
+            "quality_remark",
+            "operator",
+            "items",
+        ]
+
+    def create(self, validated_data):
+        items_data = validated_data.pop("items", [])
+        
+        rework = ReworkProduction.objects.create(**validated_data)
+
+        for item_data in items_data:
+            ReworkProdcutionItem.objects.create(
+                rework_production=rework,
+                **item_data
+            )
+
+        return rework
+
+    def update(self, instance, validated_data):
+        items_data = validated_data.pop("items", None)
+
+        # Update header fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        # If items are supplied, replace the existing items
+        if items_data is not None:
+            instance.items.all().delete()
+
+            for item_data in items_data:
+                ReworkProdcutionItem.objects.create(
+                    rework_production=instance,
+                    **item_data
+                )
+
+        return instance
