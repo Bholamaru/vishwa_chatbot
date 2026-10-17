@@ -1456,3 +1456,16 @@ from .serializers import ReworkProductionSerializer
 class ReworkProductionViewSet(viewsets.ModelViewSet):
     queryset = ReworkProduction.objects.prefetch_related("items").all()
     serializer_class = ReworkProductionSerializer
+
+
+
+from .utils import Create_Rework_No
+class GenerateReworkNoAPIView(APIView):
+
+    def get(self, request):
+        rework_no = Create_Rework_No()
+
+        return Response(
+            {"rework_no": rework_no},
+            status=status.HTTP_200_OK
+        )

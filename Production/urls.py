@@ -60,7 +60,7 @@ urlpatterns = [
     path('combo-op/',ProductionGroupedByOperation.as_view(), name='combo-add'),
     path("production-filter/", production_entry_filter, name="production-filter"),
     path("daily-production/", production_entry_datewise, name="Production-Entry-date-wise"),
-    
+    path("generate-rework-no/",GenerateReworkNoAPIView.as_view(),name="generate-rework-no"), 
 
    
 ]
