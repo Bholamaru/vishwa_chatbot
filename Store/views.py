@@ -2635,7 +2635,7 @@ def safe_float(value):
         return float(value)
     except:
         return 0
-
+from Production.models import ReworkProdcutionItem   # existing models import ke saath
 
 class WIPStockreport(APIView):
 
@@ -2721,6 +2721,23 @@ class WIPStockreport(APIView):
             qc_summary[op][heat] += safe_float(qc.ok_qty)
 
         return qc_summary
+
+    def get_rework_summary(self, fg_item):
+        part_no = fg_item.part_no
+        rework_summary = defaultdict(lambda: defaultdict(float))
+
+        rework_items = ReworkProdcutionItem.objects.filter(
+            item_des__icontains=part_no
+        )
+
+        for r in rework_items:
+            op = (r.bom_part or "").split("|")[0].strip()
+            heat = (r.heat_code or "").split("|")[0].strip()
+            if not op:
+                continue
+            rework_summary[op][heat] += safe_float(r.rework_to_ok)
+
+        return rework_summary
 
     
 
@@ -2867,6 +2884,7 @@ class WIPStockreport(APIView):
             # 👉 heat-summary-based op-wise quantities for THIS item
             operation_summary = self.get_operation_summary(item, bom_items)
             qc_summary = self.get_qc_summary(item) 
+            rework_summary = self.get_rework_summary(item)
 
             for bom in bom_items:
                 if not bom.PartCode or not bom.OPNo:
@@ -2910,8 +2928,11 @@ class WIPStockreport(APIView):
                         # 👉 QC yes/no split (same rule as before)
                         if qc_flag:
                             ok_qty = qc_summary.get(operation_number, {}).get(heat_no, 0.0)
-                            pending_qc = max(raw_qty - ok_qty, 0)
-                            prod_qty = ok_qty
+                            rework_ok = rework_summary.get(operation_number, {}).get(heat_no, 0.0) 
+                            cleared = ok_qty + rework_ok   
+                            prod_qty = min(raw_qty, cleared) 
+                            pending_qc = max(raw_qty - cleared, 0)    
+                            
                         else:
                             pending_qc = 0
                             prod_qty = raw_qty
@@ -4562,7 +4583,7 @@ from .models import InwardChallanTable
 #         return Response(response, status=status.HTTP_200_OK)
     
 
-
+from Production.models import ReworkProdcutionItem   # existing models import ke saath add karein
 def safe_float(value):
     try:
         return float(value)
@@ -4592,6 +4613,25 @@ class HeatSummaryAPIView(APIView):
             qc_summary[op][heat] += safe_float(qc.ok_qty)
 
         return qc_summary
+
+        
+    def get_rework_summary(self, fg_item):   # <-- YE NAYA ADD KARNA HAI
+        part_no = fg_item.part_no
+        rework_summary = defaultdict(lambda: defaultdict(float))
+
+        rework_items = ReworkProdcutionItem.objects.filter(
+            item_des__icontains=part_no
+        )
+
+        for r in rework_items:
+            op = (r.bom_part or "").split("|")[0].strip()
+            heat = (r.heat_code or "").split("|")[0].strip()
+            if not op:
+                continue
+            rework_summary[op][heat] += safe_float(r.rework_to_ok)
+
+        return rework_summary
+
 
     def get(self, request):
 
@@ -4721,6 +4761,7 @@ class HeatSummaryAPIView(APIView):
         # =====================================================
 
         qc_summary = self.get_qc_summary(fg_item)   # NEW
+        rework_summary = self.get_rework_summary(fg_item)
 
         # =====================================================
         # Final Response
@@ -4741,9 +4782,11 @@ class HeatSummaryAPIView(APIView):
 
                     if qc_flag:                                          
                         ok_qty = qc_summary.get(op, {}).get(heat, 0.0)   
-                        if ok_qty <= 0:                                  
+                        rework_ok = rework_summary.get(op, {}).get(heat, 0.0)
+                        cleared = ok_qty + rework_ok 
+                        if cleared <= 0:                                  
                             continue                                     
-                        response[op][heat] = min(qty, ok_qty)             
+                        response[op][heat] = min(qty, cleared)             
                     else:                                               
                         response[op][heat] = qty
 

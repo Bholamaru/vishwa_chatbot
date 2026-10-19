@@ -569,7 +569,9 @@ class ReworkProdcutionItem(models.Model):
     bom_part = models.CharField(max_length=500, blank=True, null=True)
     heat_code = models.CharField(max_length=200, blank=True, null=True)
     rework_to_ok = models.DecimalField(max_digits=50, decimal_places=4, default=0)
-    reject_to_ok = models.DecimalField(max_digits=50, decimal_places=2, blank=True, null=True)
+    reject_to_ok = models.DecimalField(
+        max_digits=50, decimal_places=2, blank=True, null=True
+    )
 
     def __str__(self):
         return self.item_des or f"Rework item {self.pk}"

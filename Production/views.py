@@ -1450,12 +1450,20 @@ class HeatSummaryAPIView(APIView):
 
         return Response(response, status=status.HTTP_200_OK)
 
-
+from django.db import transaction
 from .models import ReworkProduction
 from .serializers import ReworkProductionSerializer
 class ReworkProductionViewSet(viewsets.ModelViewSet):
     queryset = ReworkProduction.objects.prefetch_related("items").all()
     serializer_class = ReworkProductionSerializer
+
+    @transaction.atomic
+    def perform_destroy(self, instance):
+        ser = self.get_serializer()
+        for item in instance.items.all():
+            ser.change_production_qty(item, -1)
+            ser.change_qc_rework_qty(item, "restore") 
+        instance.delete()
 
 
 

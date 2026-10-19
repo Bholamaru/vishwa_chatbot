@@ -2893,8 +2893,82 @@ class OOPurchaseSerializer(serializers.ModelSerializer):
 
 # serializers.py
 
+# from rest_framework import serializers
+# from .models import ReworkProduction, ReworkProdcutionItem
+
+
+# class ReworkProdcutionItemSerializer(serializers.ModelSerializer):
+#     class Meta:
+#         model = ReworkProdcutionItem
+#         exclude = ["rework_production"]
+
+
+# class ReworkProductionSerializer(serializers.ModelSerializer):
+#     items = ReworkProdcutionItemSerializer(many=True, required=False)
+
+#     class Meta:
+#         model = ReworkProduction
+#         fields = [
+#             "id",
+#             "rework_no",
+#             "rework_date",
+#             "rework_time",
+#             "machine",
+#             "work_order",
+#             "reason_for_rework",
+#             "quality_remark",
+#             "operator",
+#             "items",
+#         ]
+
+#     def create(self, validated_data):
+#         items_data = validated_data.pop("items", [])
+        
+#         rework = ReworkProduction.objects.create(**validated_data)
+
+#         for item_data in items_data:
+#             ReworkProdcutionItem.objects.create(
+#                 rework_production=rework,
+#                 **item_data
+#             )
+
+#         return rework
+
+#     def update(self, instance, validated_data):
+#         items_data = validated_data.pop("items", None)
+
+#         # Update header fields
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
+
+#         instance.save()
+
+#         # If items are supplied, replace the existing items
+#         if items_data is not None:
+#             instance.items.all().delete()
+
+#             for item_data in items_data:
+#                 ReworkProdcutionItem.objects.create(
+#                     rework_production=instance,
+#                     **item_data
+#                 )
+
+#         return instance
+
+
+from decimal import Decimal, ROUND_DOWN
+
+from django.db import transaction
 from rest_framework import serializers
-from .models import ReworkProduction, ReworkProdcutionItem
+from Quality.models import InwardtestreworkQty,InwardtestQCinfo
+from .models import ReworkProduction, ReworkProdcutionItem, ProductionEntry
+# _dec aur _heat_no wahi se import karein jahan OOPurchaseSerializer ke helpers hain
+from .serializers import _dec, _heat_no   # <-- apne module ka path daalein
+
+
+def _heat_from_heat_code(heat_code):
+    """'RQ100 | Rework : 100 | Reject : 10' -> 'RQ100'"""
+    return str(heat_code or "").split("|")[0].strip()
 
 
 class ReworkProdcutionItemSerializer(serializers.ModelSerializer):
@@ -2909,48 +2983,165 @@ class ReworkProductionSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReworkProduction
         fields = [
-            "id",
-            "rework_no",
-            "rework_date",
-            "rework_time",
-            "machine",
-            "work_order",
-            "reason_for_rework",
-            "quality_remark",
-            "operator",
+            "id", "rework_no", "rework_date", "rework_time", "machine",
+            "work_order", "reason_for_rework", "quality_remark", "operator",
             "items",
         ]
 
+    # -------------------------------------------------------------
+    # Production row dhundo: same item + same operation + same heat
+    # -------------------------------------------------------------
+    def _find_production(self, item_des, bom_part, heat_code):
+        heat_no = _heat_from_heat_code(heat_code)
+        if not heat_no:
+            return None
+
+        candidates = (
+            ProductionEntry.objects
+            .select_for_update()
+            .filter(
+                item__iexact=(item_des or "").strip(),
+                operation__iexact=(bom_part or "").strip(),
+                lot_no__istartswith=heat_no,
+            )
+            .order_by("-id")
+        )
+
+        # exact heat match (RQ100 ko RQ1001 se confuse na kare)
+        for p in candidates:
+            if _heat_no(p.lot_no).lower() == heat_no.lower():
+                return p
+        return None
+
+    # -------------------------------------------------------------
+    # sign = +1 -> production me add, -1 -> wapas hatao
+    # -------------------------------------------------------------
+    def change_production_qty(self, item, sign):
+        qty = _dec(item.rework_to_ok)
+        if qty <= 0:
+            return
+
+        prod = self._find_production(item.item_des, item.bom_part, item.heat_code)
+        if not prod:
+            raise serializers.ValidationError({
+                "items": f"Production entry not found for "
+                         f"{item.bom_part} / {_heat_from_heat_code(item.heat_code)}"
+            })
+
+        current = _dec(prod.prod_qty)
+        new_qty = current + (qty * sign)
+        if new_qty < 0:
+            new_qty = Decimal("0")
+
+        prod.prod_qty = str(new_qty.quantize(Decimal("0.01"), rounding=ROUND_DOWN))
+        prod.save(update_fields=["prod_qty"])
+
+        print(f"♻️ Rework {'+' if sign > 0 else '-'}{qty}: "
+              f"Production {prod.id} {current} -> {prod.prod_qty}", flush=True)
+
+
+    # -------------------------------------------------------------
+    # QC rework_qty se minus (sign=-1) ya wapas add (sign=+1)
+    # NOTE: yahan sign rework entry ke hisaab se nahi, QC ke hisaab se hai
+    #   rework create  -> QC rework_qty GHATA
+    #   rework delete  -> QC rework_qty WAPAS
+    # -------------------------------------------------------------
+
+    def change_qc_rework_qty(self, item, action):
+        """action = 'consume' (create) | 'restore' (delete / old update)"""
+        qty = _dec(item.rework_to_ok)
+        if qty <= 0:
+            return
+
+        heat_no = _heat_from_heat_code(item.heat_code)
+        if not heat_no:
+            return
+
+        qc_ids = list(
+            InwardtestQCinfo.objects.filter(
+                item__iexact=(item.item_des or "").strip(),
+                opno__iexact=(item.bom_part or "").strip(),
+                heat_no__iexact=heat_no,
+            ).values_list("id", flat=True)
+        )
+        if not qc_ids:
+            print(f"⚠️ No QC found for {item.bom_part} / {heat_no}", flush=True)
+            return
+
+        rows = list(
+            InwardtestreworkQty.objects
+            .select_for_update()
+            .filter(qc_id__in=qc_ids)
+            .order_by("id")
+        )
+        if not rows:
+            print("⚠️ No QC rework_qty rows found", flush=True)
+            return
+
+        if action == "restore":
+            row = rows[0]
+            row.qty = str(_dec(row.qty) + qty)
+            row.save(update_fields=["qty"])
+            print(f"♻️ QC rework row {row.id}: +{qty}", flush=True)
+            return
+
+        # consume (FIFO)
+        remaining = qty
+        for row in rows:
+            if remaining <= 0:
+                break
+            current = _dec(row.qty)
+            if current <= 0:
+                continue
+            take = min(current, remaining)
+            row.qty = str(current - take)
+            row.save(update_fields=["qty"])
+            print(f"✓ QC rework row {row.id}: {current} -> {row.qty}", flush=True)
+            remaining -= take
+
+        if remaining > 0:
+            print(f"⚠️ QC rework qty insufficient, short by {remaining}", flush=True)
+
+    # ---------------------------- CREATE ----------------------------
+    @transaction.atomic
     def create(self, validated_data):
         items_data = validated_data.pop("items", [])
-        
+
         rework = ReworkProduction.objects.create(**validated_data)
 
         for item_data in items_data:
-            ReworkProdcutionItem.objects.create(
+            item = ReworkProdcutionItem.objects.create(
                 rework_production=rework,
                 **item_data
             )
+            self.change_production_qty(item, +1)
+            self.change_qc_rework_qty(item, "consume")
 
         return rework
 
+    # ---------------------------- UPDATE ----------------------------
+    @transaction.atomic
     def update(self, instance, validated_data):
         items_data = validated_data.pop("items", None)
 
-        # Update header fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-
         instance.save()
 
-        # If items are supplied, replace the existing items
         if items_data is not None:
+            # 1. purani rework qty production se hatao
+            for old in instance.items.all():
+                self.change_production_qty(old, -1)
+                self.change_qc_rework_qty(old, "restore") 
             instance.items.all().delete()
 
+            # 2. nayi rework qty add karo
             for item_data in items_data:
-                ReworkProdcutionItem.objects.create(
+                item = ReworkProdcutionItem.objects.create(
                     rework_production=instance,
                     **item_data
                 )
+                self.change_production_qty(item, +1)
+                self.change_qc_rework_qty(item, "consume")
 
         return instance
