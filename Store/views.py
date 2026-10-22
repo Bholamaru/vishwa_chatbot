@@ -7353,3 +7353,1076 @@ def generate_delivery_challan_pdf(request, pk):
     )
 
     return response
+
+
+
+
+
+from decimal import Decimal
+
+from django.db.models import Sum
+from rest_framework.response import Response
+from rest_framework.decorators import api_view
+
+from .models import (
+    RMStock,
+    RMStockLot,
+    JobworkInwardChallanTable,
+    MaterialChallanTable,
+
+)
+def decimal_value(value):
+    try:
+        return Decimal(str(value or 0))
+    except Exception:
+        return Decimal("0")
+
+def extract_item_code(value):
+
+    value = (value or "").strip()
+
+    if "|" in value:
+        return value.split("|")[0].strip()
+
+    if "-" in value:
+        return value.split("-")[0].strip()
+
+    return value
+from decimal import Decimal, InvalidOperation
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from Sales.models import Invoice,InvoiceItemdetails
+from .models import (
+    RMStock,    
+    MaterialChallan,
+)
+
+
+# @api_view(["GET"])
+# def get_balance_stock(request):
+#     def decimal_value(value):
+
+#         try:
+#             return Decimal(str(value or 0))
+
+#         except (
+#             InvalidOperation,
+#             ValueError,
+#             TypeError
+#         ):
+#             return Decimal("0")
+
+#     def extract_item_code(value):
+
+#         value = (value or "").strip()
+
+#         if "|" in value:
+#             return value.split("|")[0].strip()
+
+#         if "-" in value:
+#             return value.split("-")[0].strip()
+
+#         return value
+
+ 
+#     def extract_item_details(value):
+
+#         value = (value or "").strip()
+
+#         parts = [
+#             part.strip()
+#             for part in value.split("-")
+#         ]
+
+#         item_no = ""
+#         description = ""
+
+#         if len(parts) >= 2:
+#             item_no = parts[1]
+
+#         if len(parts) >= 3:
+#             description = " - ".join(parts[2:])
+
+#         return item_no, description
+
+ 
+#     stocks = (
+#         RMStock.objects
+#         .filter(qty__gt=0)
+#         .order_by(
+#             "item_code",
+#             "heat_no"
+#         )
+#     )
+ 
+#     items = {}
+
+#     for stock in stocks:
+
+#         item_code = (
+#             stock.item_code or ""
+#         ).strip()
+
+#         heat_no = (
+#             stock.heat_no or ""
+#         ).strip()
+
+#         if not item_code:
+#             continue
+
+#         if not heat_no:
+#             continue
+
+
+#         if item_code not in items:
+
+#             items[item_code] = {
+
+#                 "item_code": item_code,
+
+#                 "item_no": "",
+
+#                 "description": "",
+
+#                 "stock": Decimal("0"),
+
+#                 "bar": Decimal("0"),
+
+#                 "wire_rod": Decimal("0"),
+
+#                 "ShopFloor": Decimal("0"),
+
+#                 "variants": {}
+#             }
+
+
+#         items[item_code]["stock"] += (
+#             decimal_value(stock.qty)
+#         )
+
+#         # -----------------------------------------------------
+#         # Create heat variant
+#         # -----------------------------------------------------
+
+#         if heat_no not in (
+#             items[item_code]["variants"]
+#         ):
+
+#             items[item_code]["variants"][heat_no] = {
+
+#                 "HeatNo": heat_no,
+
+#                 "GRNQty": Decimal("0"),
+
+#                 "bar": Decimal("0"),
+
+#                 "wire_rod": Decimal("0")
+#             }
+
+#         # -----------------------------------------------------
+#         # Current available stock
+#         # -----------------------------------------------------
+
+#         items[item_code]["variants"][heat_no][
+#             "GRNQty"
+#         ] += decimal_value(stock.qty)
+
+#     # =========================================================
+#     # STEP 4
+#     # PRODUCTION ENTRY
+#     #
+#     # IMPORTANT LOGIC:
+#     #
+#     # ProductionEntry.raw_material
+#     #             ↓
+#     #        RM item code
+#     #
+#     # ProductionEntry.lot_no
+#     #             ↓
+#     #        Heat number
+#     #
+#     # ProductionEntry.bar_value
+#     #             ↓
+#     #           bar
+#     #
+#     # ProductionEntry.wier_rod_value
+#     #             ↓
+#     #         wire_rod
+#     #
+#     # Example:
+#     #
+#     # raw_material = RM1007
+#     # lot_no = SHIV10|100
+#     #
+#     # HeatNo = SHIV10
+#     # =========================================================
+
+#     production_entries = (
+#         ProductionEntry.objects
+#         .all()
+#     )
+
+#     for production in production_entries:
+
+#         # -----------------------------------------------------
+#         # RM ITEM CODE
+#         # -----------------------------------------------------
+
+#         item_code = (
+#             production.raw_material or ""
+#         ).strip()
+
+#         if not item_code:
+#             continue
+
+#         # -----------------------------------------------------
+#         # LOT / HEAT
+#         #
+#         # Example:
+#         # SHIV10|100
+#         #
+#         # HeatNo = SHIV10
+#         # -----------------------------------------------------
+
+#         lot_no = (
+#             production.lot_no or ""
+#         ).strip()
+
+#         if not lot_no:
+#             continue
+
+#         if "|" in lot_no:
+
+#             heat_no = (
+#                 lot_no
+#                 .split("|")[0]
+#                 .strip()
+#             )
+
+#         else:
+
+#             heat_no = lot_no
+
+#         if not heat_no:
+#             continue
+
+#         # -----------------------------------------------------
+#         # BAR
+#         # -----------------------------------------------------
+
+#         bar = decimal_value(
+#             production.bar_value
+#         )
+
+#         # -----------------------------------------------------
+#         # WIRE ROD
+#         #
+#         # Your actual field is:
+#         #
+#         # wier_rod_value
+#         #
+#         # Keep this spelling because it matches your model.
+#         # -----------------------------------------------------
+
+#         wire_rod = decimal_value(
+#             production.wier_rod_value
+#         )
+
+#         # -----------------------------------------------------
+#         # Only process if RM stock exists
+#         # -----------------------------------------------------
+
+#         if item_code not in items:
+#             continue
+
+#         # -----------------------------------------------------
+#         # Create heat if it doesn't exist
+#         # -----------------------------------------------------
+
+#         if heat_no not in (
+#             items[item_code]["variants"]
+#         ):
+
+#             items[item_code]["variants"][heat_no] = {
+
+#                 "HeatNo": heat_no,
+
+#                 "GRNQty": Decimal("0"),
+
+#                 "bar": Decimal("0"),
+
+#                 "wire_rod": Decimal("0")
+#             }
+
+#         # -----------------------------------------------------
+#         # ADD BAR TO HEAT
+#         # -----------------------------------------------------
+
+#         items[item_code]["variants"][heat_no][
+#             "bar"
+#         ] += bar
+
+#         # -----------------------------------------------------
+#         # ADD WIRE ROD TO HEAT
+#         # -----------------------------------------------------
+
+#         items[item_code]["variants"][heat_no][
+#             "wire_rod"
+#         ] += wire_rod
+
+#         # -----------------------------------------------------
+#         # ADD BAR TO ITEM
+#         # -----------------------------------------------------
+
+#         items[item_code]["bar"] += bar
+
+#         # -----------------------------------------------------
+#         # ADD WIRE ROD TO ITEM
+#         # -----------------------------------------------------
+
+#         items[item_code]["wire_rod"] += wire_rod
+
+#     # =========================================================
+#     # STEP 5
+#     # MATERIAL CHALLAN
+#     #
+#     # ShopFloor comes from MaterialChallan.
+#     #
+#     # Item:
+#     #
+#     # RM1007 - TEST - DEMO
+#     #
+#     # Qty:
+#     #
+#     # MaterialChallanTable.Qty
+#     # =========================================================
+
+#     material_challans = (
+#         MaterialChallan.objects
+#         .prefetch_related(
+#             "MaterialChallanTable"
+#         )
+#         .all()
+#     )
+
+#     for challan in material_challans:
+
+#         material_item = (
+#             challan.Item or ""
+#         ).strip()
+
+#         if not material_item:
+#             continue
+
+#         item_code = extract_item_code(
+#             material_item
+#         )
+
+#         if not item_code:
+#             continue
+
+#         if item_code not in items:
+#             continue
+
+#         # -----------------------------------------------------
+#         # ShopFloor quantity
+#         # -----------------------------------------------------
+
+#         for material_item_row in (
+#             challan.MaterialChallanTable.all()
+#         ):
+
+#             qty = decimal_value(
+#                 material_item_row.Qty
+#             )
+
+#             items[item_code]["ShopFloor"] += qty
+
+#     # =========================================================
+#     # STEP 6
+#     # ITEM NO + DESCRIPTION
+#     # =========================================================
+
+#     for item_code, item_data in items.items():
+
+#         challan = (
+#             MaterialChallan.objects
+#             .filter(
+#                 Item__istartswith=item_code
+#             )
+#             .exclude(
+#                 Item__isnull=True
+#             )
+#             .exclude(
+#                 Item=""
+#             )
+#             .first()
+#         )
+
+#         if challan:
+
+#             item_no, description = (
+#                 extract_item_details(
+#                     challan.Item
+#                 )
+#             )
+
+#             item_data["item_no"] = item_no
+
+#             item_data["description"] = description
+
+#     # =========================================================
+#     # STEP 6.1
+#     # INVOICE QTY
+#     #
+#     # FG item  -> invoice part_no se direct match
+#     # RM item  -> BOM ke first op (BOMPartType="RM") se pata karo
+#     #             kaun se FG me ye RM use hua, un FG ki invoice qty add
+#     # =========================================================
+
+#     # 1) invoice qty by part_no (FG)
+#     invoice_qty_map = {}
+
+#     invoice_rows = (
+#         InvoiceItemdetails.objects
+#         .exclude(part_no__isnull=True)
+#         .exclude(part_no="")
+#         .values("part_no")
+#         .annotate(total_inv_qty=Sum("inv_qty"))
+#     )
+
+#     for row in invoice_rows:
+#         key = (row["part_no"] or "").strip().upper()
+#         invoice_qty_map[key] = (
+#             invoice_qty_map.get(key, Decimal("0"))
+#             + decimal_value(row["total_inv_qty"])
+#         )
+
+#     # 2) RM -> set of FG part_no (BOM first operation only)
+#     rm_to_fg = {}
+
+#     first_op_rows = (
+#         BOMItem.objects
+#         .filter(BOMPartType="RM")
+#         .select_related("item")
+#     )
+
+#     for bom in first_op_rows:
+
+#         rm_code = (bom.BomPartCode or "").strip().upper()
+#         fg_part_no = (bom.item.part_no or "").strip().upper()
+
+#         if not rm_code or not fg_part_no:
+#             continue
+
+#         rm_to_fg.setdefault(rm_code, set()).add(fg_part_no)
+
+#     # 3) assign inv_qty
+#     for item_code, item_data in items.items():
+
+#         code = item_code.strip().upper()
+
+#         # direct match (FG item, ya RM jo seedha invoice hua ho)
+#         total = invoice_qty_map.get(code, Decimal("0"))
+
+#         # RM item: BOM se FG nikalo (BomPartCode "RMRM1009" ya "RM1009" dono check)
+#         if code.startswith("RM"):
+
+#             fg_set = set()
+#             fg_set |= rm_to_fg.get(code, set())
+#             fg_set |= rm_to_fg.get("RM" + code, set())
+
+#             for fg_part_no in fg_set:
+#                 total += invoice_qty_map.get(
+#                     fg_part_no,
+#                     Decimal("0")
+#                 )
+
+#         item_data["inv_qty"] = total
+
+#     # =========================================================
+#     # STEP 6.2
+#     # REWORK QTY + REJECT QTY (Inward Test QC)
+#     #
+#     # InwardtestQCinfo.item = "FGFG1006 | Toll | CoilPart"
+#     #                          -> item code = FGFG1006
+#     # Same item ke saare QC records ki rework / reject qty add hoti hai.
+#     # =========================================================
+
+#     rework_map = {}
+#     reject_map = {}
+
+#     qc_records = (
+#         InwardtestQCinfo.objects
+#         .exclude(item__isnull=True)
+#         .exclude(item="")
+#         .prefetch_related(
+#             "rework_qty",
+#             "reject_qty"
+#         )
+#     )
+
+#     for qc in qc_records:
+
+#         code = extract_item_code(qc.item).upper()
+
+#         if not code:
+#             continue
+
+#         for row in qc.rework_qty.all():
+#             rework_map[code] = (
+#                 rework_map.get(code, Decimal("0"))
+#                 + decimal_value(row.qty)
+#             )
+
+#         for row in qc.reject_qty.all():
+#             reject_map[code] = (
+#                 reject_map.get(code, Decimal("0"))
+#                 + decimal_value(row.qty)
+#             )
+
+#     for item_code, item_data in items.items():
+
+#         code = item_code.strip().upper()
+
+#         item_data["rework_qty"] = rework_map.get(code, Decimal("0"))
+#         item_data["reject_qty"] = reject_map.get(code, Decimal("0"))
+
+#     # =========================================================
+#     # STEP 7
+#     # FINAL RESPONSE
+#     # =========================================================
+
+#     response_data = []
+
+#     for item_code, item_data in items.items():
+
+#         variants = []
+
+#         for (
+#             heat_no,
+#             variant
+#         ) in item_data["variants"].items():
+
+#             variants.append({
+
+#                 "HeatNo": variant["HeatNo"],
+
+#                 "GRNQty": float(
+#                     variant["GRNQty"]
+#                 ),
+
+#                 "bar": float(
+#                     variant["bar"]
+#                 ),
+
+#                 "wire_rod": float(
+#                     variant["wire_rod"]
+#                 )
+#             })
+
+#         response_data.append({
+
+#             "item_code":
+#                 item_data["item_code"],
+
+#             "item_no":
+#                 item_data["item_no"],
+
+#             "description":
+#                 item_data["description"],
+
+#             "stock":
+#                 float(item_data["stock"]),
+
+#             "bar":
+#                 float(item_data["bar"]),
+
+#             "wire_rod":
+#                 float(item_data["wire_rod"]),
+
+#             "ShopFloor":
+#                 float(item_data["ShopFloor"]),
+
+#             "inv_qty":
+#                 float(item_data["inv_qty"]),
+
+#             "rework_qty":
+#                 float(item_data["rework_qty"]),
+
+#             "reject_qty":
+#                 float(item_data["reject_qty"]),
+
+#             "variants":
+#                 variants
+#         })
+
+#     # =========================================================
+#     # STEP 8
+#     # RESPONSE
+#     # =========================================================
+
+#     return Response({
+
+#         "status": True,
+
+#         "count": len(response_data),
+
+#         "data": response_data
+#     })
+
+
+
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
+
+from django.db.models import Sum
+from django.utils.dateparse import parse_date
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+# Import your models from the correct modules, for example:
+# from .models import (
+#     RMStock, ProductionEntry, MaterialChallan, InvoiceItemdetails,
+#     InwardtestQCinfo,
+# )
+# from All_Masters.models import BOMItem
+
+
+DATE_FORMATS = (
+    "%Y-%m-%d",
+    "%d-%m-%Y",
+    "%d/%m/%Y",
+    "%Y/%m/%d",
+    "%d-%b-%Y",
+    "%d %b %Y",
+)
+
+
+@api_view(["GET"])
+def get_balance_stock(request):
+
+    # =========================================================
+    # DATE FILTER (query params: from_date, to_date  -> YYYY-MM-DD)
+    # Both are optional. With neither, output is the same as before.
+    # =========================================================
+
+    from_date_str = request.query_params.get("from_date")
+    to_date_str = request.query_params.get("to_date")
+
+    from_date = parse_date(from_date_str) if from_date_str else None
+    to_date = parse_date(to_date_str) if to_date_str else None
+
+    if (from_date_str and not from_date) or (to_date_str and not to_date):
+        return Response(
+            {"status": False, "message": "Use YYYY-MM-DD for from_date / to_date"},
+            status=400,
+        )
+
+    if from_date and to_date and from_date > to_date:
+        return Response(
+            {"status": False, "message": "from_date cannot be after to_date"},
+            status=400,
+        )
+
+    # Optional item search: ?item_code=FGFG1006 (partial, case-insensitive)
+    item_code_param = (request.query_params.get("item_code") or "").strip()
+
+    def parse_text_date(value):
+        # For CharField dates (ProductionEntry.Date, MaterialChallan.MaterialIssueDate)
+        value = (value or "").strip()
+        if not value:
+            return None
+
+        candidates = [value]
+        first_token = value.replace("T", " ").split(" ")[0]
+        if first_token != value:
+            candidates.append(first_token)
+
+        for candidate in candidates:
+            for fmt in DATE_FORMATS:
+                try:
+                    return datetime.strptime(candidate, fmt).date()
+                except ValueError:
+                    continue
+        return None
+
+    def in_range(value):
+        if not from_date and not to_date:
+            return True
+
+        d = parse_text_date(value)
+
+        if d is None:
+            return False
+        if from_date and d < from_date:
+            return False
+        if to_date and d > to_date:
+            return False
+        return True
+
+    # =========================================================
+    # HELPERS
+    # =========================================================
+
+    def decimal_value(value):
+        try:
+            return Decimal(str(value or 0))
+        except (InvalidOperation, ValueError, TypeError):
+            return Decimal("0")
+
+    def extract_item_code(value):
+        value = (value or "").strip()
+
+        if "|" in value:
+            return value.split("|")[0].strip()
+
+        if "-" in value:
+            return value.split("-")[0].strip()
+
+        return value
+
+    def extract_item_details(value):
+        value = (value or "").strip()
+
+        parts = [part.strip() for part in value.split("-")]
+
+        item_no = ""
+        description = ""
+
+        if len(parts) >= 2:
+            item_no = parts[1]
+
+        if len(parts) >= 3:
+            description = " - ".join(parts[2:])
+
+        return item_no, description
+
+    # =========================================================
+    # STEP 3
+    # RM STOCK  (current snapshot, NOT date filtered)
+    # =========================================================
+
+    stocks = (
+        RMStock.objects
+        .filter(qty__gt=0)
+        .order_by("item_code", "heat_no")
+    )
+
+    if item_code_param:
+        stocks = stocks.filter(item_code__icontains=item_code_param)
+
+    items = {}
+
+    for stock in stocks:
+
+        item_code = (stock.item_code or "").strip()
+        heat_no = (stock.heat_no or "").strip()
+
+        if not item_code:
+            continue
+
+        if not heat_no:
+            continue
+
+        if item_code not in items:
+            items[item_code] = {
+                "item_code": item_code,
+                "item_no": "",
+                "description": "",
+                "stock": Decimal("0"),
+                "bar": Decimal("0"),
+                "wire_rod": Decimal("0"),
+                "ShopFloor": Decimal("0"),
+                "inv_qty": Decimal("0"),
+                "rework_qty": Decimal("0"),
+                "reject_qty": Decimal("0"),
+                "variants": {},
+            }
+
+        items[item_code]["stock"] += decimal_value(stock.qty)
+
+        if heat_no not in items[item_code]["variants"]:
+            items[item_code]["variants"][heat_no] = {
+                "HeatNo": heat_no,
+                "GRNQty": Decimal("0"),
+                "bar": Decimal("0"),
+                "wire_rod": Decimal("0"),
+            }
+
+        items[item_code]["variants"][heat_no]["GRNQty"] += decimal_value(stock.qty)
+
+    # =========================================================
+    # STEP 4
+    # PRODUCTION ENTRY  (date filtered on ProductionEntry.Date)
+    #
+    # raw_material -> RM item code
+    # lot_no       -> heat number (part before "|")
+    # bar_value    -> bar
+    # wier_rod_value -> wire_rod  (spelling matches your model)
+    # =========================================================
+
+    production_entries = (
+        ProductionEntry.objects
+        .exclude(raw_material__isnull=True)
+        .exclude(raw_material="")
+        .only("raw_material", "lot_no", "bar_value", "wier_rod_value", "Date")
+    )
+
+    for production in production_entries.iterator():
+
+        if not in_range(production.Date):
+            continue
+
+        item_code = (production.raw_material or "").strip()
+
+        if not item_code:
+            continue
+
+        if item_code not in items:
+            continue
+
+        lot_no = (production.lot_no or "").strip()
+
+        if not lot_no:
+            continue
+
+        heat_no = lot_no.split("|")[0].strip() if "|" in lot_no else lot_no
+
+        if not heat_no:
+            continue
+
+        bar = decimal_value(production.bar_value)
+        wire_rod = decimal_value(production.wier_rod_value)
+
+        if heat_no not in items[item_code]["variants"]:
+            items[item_code]["variants"][heat_no] = {
+                "HeatNo": heat_no,
+                "GRNQty": Decimal("0"),
+                "bar": Decimal("0"),
+                "wire_rod": Decimal("0"),
+            }
+
+        items[item_code]["variants"][heat_no]["bar"] += bar
+        items[item_code]["variants"][heat_no]["wire_rod"] += wire_rod
+
+        items[item_code]["bar"] += bar
+        items[item_code]["wire_rod"] += wire_rod
+
+    # =========================================================
+    # STEP 5
+    # MATERIAL CHALLAN -> ShopFloor
+    # (date filtered on MaterialChallan.MaterialIssueDate)
+    # =========================================================
+
+    material_challans = (
+        MaterialChallan.objects
+        .prefetch_related("MaterialChallanTable")
+        .all()
+    )
+
+    for challan in material_challans:
+
+        if not in_range(challan.MaterialIssueDate):
+            continue
+
+        material_item = (challan.Item or "").strip()
+
+        if not material_item:
+            continue
+
+        item_code = extract_item_code(material_item)
+
+        if not item_code:
+            continue
+
+        if item_code not in items:
+            continue
+
+        for material_item_row in challan.MaterialChallanTable.all():
+            items[item_code]["ShopFloor"] += decimal_value(material_item_row.Qty)
+
+    # =========================================================
+    # STEP 6
+    # ITEM NO + DESCRIPTION  (label lookup only, NOT date filtered)
+    # One query instead of one per item.
+    # =========================================================
+
+    challan_label_map = {}
+
+    for raw_item in (
+        MaterialChallan.objects
+        .exclude(Item__isnull=True)
+        .exclude(Item="")
+        .order_by("id")
+        .values_list("Item", flat=True)
+    ):
+        code = extract_item_code(raw_item)
+
+        if code and code not in challan_label_map:
+            challan_label_map[code] = raw_item
+
+    for item_code, item_data in items.items():
+
+        raw_item = challan_label_map.get(item_code)
+
+        if raw_item:
+            item_no, description = extract_item_details(raw_item)
+            item_data["item_no"] = item_no
+            item_data["description"] = description
+
+    # =========================================================
+    # STEP 6.1
+    # INVOICE QTY  (date filtered on InvoiceItemdetails.date)
+    #
+    # FG item -> invoice part_no direct match
+    # RM item -> BOM first op (BOMPartType="RM") tells which FG used
+    #            this RM; add those FG invoice quantities
+    # =========================================================
+
+    invoice_qs = (
+        InvoiceItemdetails.objects
+        .exclude(part_no__isnull=True)
+        .exclude(part_no="")
+    )
+
+    if from_date:
+        invoice_qs = invoice_qs.filter(date__gte=from_date)
+    if to_date:
+        invoice_qs = invoice_qs.filter(date__lte=to_date)
+
+    invoice_rows = (
+        invoice_qs
+        .values("part_no")
+        .annotate(total_inv_qty=Sum("inv_qty"))
+    )
+
+    invoice_qty_map = {}
+
+    for row in invoice_rows:
+        key = (row["part_no"] or "").strip().upper()
+        invoice_qty_map[key] = (
+            invoice_qty_map.get(key, Decimal("0"))
+            + decimal_value(row["total_inv_qty"])
+        )
+
+    # RM -> set of FG part_no (BOM first operation only, NOT date filtered)
+    rm_to_fg = {}
+
+    first_op_rows = (
+        BOMItem.objects
+        .filter(BOMPartType="RM")
+        .select_related("item")
+    )
+
+    for bom in first_op_rows:
+
+        rm_code = (bom.BomPartCode or "").strip().upper()
+        fg_part_no = (bom.item.part_no or "").strip().upper()
+
+        if not rm_code or not fg_part_no:
+            continue
+
+        rm_to_fg.setdefault(rm_code, set()).add(fg_part_no)
+
+    for item_code, item_data in items.items():
+
+        code = item_code.strip().upper()
+
+        total = invoice_qty_map.get(code, Decimal("0"))
+
+        if code.startswith("RM"):
+
+            fg_set = set()
+            fg_set |= rm_to_fg.get(code, set())
+            fg_set |= rm_to_fg.get("RM" + code, set())
+
+            for fg_part_no in fg_set:
+                total += invoice_qty_map.get(fg_part_no, Decimal("0"))
+
+        item_data["inv_qty"] = total
+
+    # =========================================================
+    # STEP 6.2
+    # REWORK QTY + REJECT QTY  (date filtered on InwardtestQCinfo.date)
+    #
+    # InwardtestQCinfo.item = "FGFG1006 | Toll | CoilPart" -> FGFG1006
+    # =========================================================
+
+    qc_records = (
+        InwardtestQCinfo.objects
+        .exclude(item__isnull=True)
+        .exclude(item="")
+        .prefetch_related("rework_qty", "reject_qty")
+    )
+
+    if from_date:
+        qc_records = qc_records.filter(date__gte=from_date)
+    if to_date:
+        qc_records = qc_records.filter(date__lte=to_date)
+
+    rework_map = {}
+    reject_map = {}
+
+    for qc in qc_records:
+
+        code = extract_item_code(qc.item).upper()
+
+        if not code:
+            continue
+
+        for row in qc.rework_qty.all():
+            rework_map[code] = rework_map.get(code, Decimal("0")) + decimal_value(row.qty)
+
+        for row in qc.reject_qty.all():
+            reject_map[code] = reject_map.get(code, Decimal("0")) + decimal_value(row.qty)
+
+    for item_code, item_data in items.items():
+
+        code = item_code.strip().upper()
+
+        item_data["rework_qty"] = rework_map.get(code, Decimal("0"))
+        item_data["reject_qty"] = reject_map.get(code, Decimal("0"))
+
+    # =========================================================
+    # STEP 7
+    # FINAL RESPONSE
+    # =========================================================
+
+    response_data = []
+
+    for item_code, item_data in items.items():
+
+        variants = []
+
+        for heat_no, variant in item_data["variants"].items():
+            variants.append({
+                "HeatNo": variant["HeatNo"],
+                "GRNQty": float(variant["GRNQty"]),
+                "bar": float(variant["bar"]),
+                "wire_rod": float(variant["wire_rod"]),
+            })
+
+        response_data.append({
+            "item_code": item_data["item_code"],
+            "item_no": item_data["item_no"],
+            "description": item_data["description"],
+            "stock": float(item_data["stock"]),
+            "bar": float(item_data["bar"]),
+            "wire_rod": float(item_data["wire_rod"]),
+            "ShopFloor": float(item_data["ShopFloor"]),
+            "inv_qty": float(item_data["inv_qty"]),
+            "rework_qty": float(item_data["rework_qty"]),
+            "reject_qty": float(item_data["reject_qty"]),
+            "variants": variants,
+        })
+
+    return Response({
+        "status": True,
+        "from_date": from_date_str,
+        "to_date": to_date_str,
+        "item_code": item_code_param or None,
+        "count": len(response_data),
+        "data": response_data,
+    })
