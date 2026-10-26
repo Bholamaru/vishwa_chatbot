@@ -718,6 +718,7 @@ class JobworkInwardChallanTableSerializer(serializers.ModelSerializer):
         model = JobworkInwardChallanTable
         fields = [
             "ItemCode",
+            "item_size",
             "Operation",
             "ChallanQty",
             "GRNQty",
