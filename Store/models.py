@@ -644,6 +644,7 @@ class JobworkInwardChallan(models.Model):
 class JobworkInwardChallanTable(models.Model):
     JobworkInwardChallanDetail = models.ForeignKey(JobworkInwardChallan, related_name="JobworkInwardChallanTable", on_delete=models.CASCADE)
     ItemCode = models.CharField(max_length=255, blank=True, null=True)
+    item_size = models.CharField(max_length=200,blank=True,null=True)
     Operation = models.CharField(max_length=255, blank=True, null=True)
     ChallanQty = models.CharField(max_length=255, blank=True, null=True)
     GRNQty = models.CharField(max_length=255, blank=True, null=True)

@@ -7974,6 +7974,7 @@ from .models import (
 
 
 
+
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -8382,8 +8383,30 @@ def get_balance_stock(request):
 
         code = item_code.strip().upper()
 
-        item_data["rework_qty"] = rework_map.get(code, Decimal("0"))
-        item_data["reject_qty"] = reject_map.get(code, Decimal("0"))
+        # Condition 1: direct match (item ka apna QC record)
+        rework_total = rework_map.get(code, Decimal("0"))
+        reject_total = reject_map.get(code, Decimal("0"))
+
+        # Condition 2: RM item -> BOM se jo FG bane, un FG ka QC rework/reject
+        if code.startswith("RM"):
+
+            fg_set = set()
+            fg_set |= rm_to_fg.get(code, set())
+            fg_set |= rm_to_fg.get("RM" + code, set())
+
+            fg_keys = set()
+            for fg_part_no in fg_set:
+                fg_keys.add(fg_part_no)
+                fg_keys.add("FG" + fg_part_no)
+                if fg_part_no.startswith("FG"):
+                    fg_keys.add(fg_part_no[2:])
+
+            for fg_key in fg_keys:
+                rework_total += rework_map.get(fg_key, Decimal("0"))
+                reject_total += reject_map.get(fg_key, Decimal("0"))
+
+        item_data["rework_qty"] = rework_total
+        item_data["reject_qty"] = reject_total
 
     # =========================================================
     # STEP 7

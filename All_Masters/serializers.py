@@ -958,7 +958,7 @@ from .models import ItemTable
 class RMItemTableSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemTable
-        fields = ['id', 'part_no', 'Part_Code', 'Name_Description']
+        fields = ['id', 'part_no', 'Part_Code', 'Name_Description',"Item_Size"]
 
 
 from rest_framework import serializers

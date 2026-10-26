@@ -2155,7 +2155,7 @@ class RMItemSearchView(generics.ListAPIView):
     serializer_class = RMItemTableSerializer
     filter_backends = [filters.SearchFilter]
     # search_fields=['Part_Code']
-    search_fields = ['part_no', 'Part_Code', 'Name_Description']
+    search_fields = ['part_no', 'Part_Code', 'Name_Description',"Item_Size"]
 
     def get_queryset(self):
         return ItemTable.objects.filter(
@@ -2249,6 +2249,7 @@ class BOMItemByPartCodeView(APIView):
                 "part_no": item.part_no,
                 "Name_Description": item.Name_Description,
                 "Part_Code": item.Part_Code,
+                "item_size": item.Item_Size,
                 "Auth": item.is_verified,
                 "User": item.created_by.username if item.created_by else None,
                 "bom_items": serializer.data
