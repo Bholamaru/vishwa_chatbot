@@ -151,5 +151,6 @@ urlpatterns = [
         generate_delivery_challan_pdf,
         name="delivery-challan-pdf",
     ),
-    path("balance-sheet/",get_balance_stock, name="Balance-sheet-all")
+    path("balance-sheet/",get_balance_stock, name="Balance-sheet-all"),
+    path("balance2/",get_balance_stock2,)
 ]
