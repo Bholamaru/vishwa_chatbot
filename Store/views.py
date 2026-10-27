@@ -7904,7 +7904,7 @@ from rest_framework.response import Response
 # Import your models from the correct modules, for example:
 # from .models import (
 #     RMStock, ProductionEntry, MaterialChallan, InvoiceItemdetails,
-#     InwardtestQCinfo, RMStockLot, JobworkInwardChallanTable,
+#     InwardtestQCinfo, RMStockLot, JobworkInwardChallanTable, OpeningStockRM,
 # )
 # from All_Masters.models import BOMItem
 
@@ -8024,7 +8024,7 @@ def get_balance_stock(request):
 
     # =========================================================
     # STEP 3
-    # RM STOCK  (current snapshot, NOT date filtered)
+    # RM STOCK  (RMStock totals; customer-wise stock is built in STEP 3.1)
     # =========================================================
 
     stocks = (
@@ -8098,7 +8098,7 @@ def get_balance_stock(request):
 
     # =========================================================
     # STEP 3.1
-    # CUSTOMER-WISE JOBWORK STOCK  (current snapshot, NOT date filtered)
+    # CUSTOMER-WISE JOBWORK STOCK  (date filtered on the receipt date)
     #
     # Flow:
     #   JobworkInwardChallanTable (GRN row, has item_size)
@@ -8129,6 +8129,7 @@ def get_balance_stock(request):
 
     lot_rows = []
     jobwork_row_ids = set()
+    opening_row_ids = set()
 
     for lot in lot_qs:
 
@@ -8162,6 +8163,13 @@ def get_balance_stock(request):
         ):
             jobwork_row_ids.add(lot.source_id)
 
+        if (
+            lot.source == "OPENING"
+            and lot.source_id
+            and lot.source_table == "OpeningStockRM"
+        ):
+            opening_row_ids.add(lot.source_id)
+
     jobwork_info = {}
 
     for row in (
@@ -8172,9 +8180,48 @@ def get_balance_stock(request):
         jobwork_info[row.id] = {
             "customer": (row.JobworkInwardChallanDetail.Customer or "").strip(),
             "item_size": (row.item_size or "").strip(),
+            # Jobwork inward date (CharField) - parsed, None if empty/unknown
+            "date": parse_text_date(row.JobworkInwardChallanDetail.InwardDate),
         }
 
+    # Opening stock business date (OpeningStockRM.date)
+    opening_dates = {}
+
+    if (from_date or to_date) and opening_row_ids:
+        opening_dates = dict(
+            OpeningStockRM.objects
+            .filter(id__in=opening_row_ids)
+            .values_list("id", "date")
+        )
+
+    def receipt_date(lot):
+        # Date the stock came in: jobwork InwardDate / opening date,
+        # falling back to the day the lot was created in the system.
+        if lot.source == "JOBWORK":
+            found = jobwork_info.get(lot.source_id, {}).get("date")
+        else:
+            found = opening_dates.get(lot.source_id)
+
+        return found or local_date(lot.created_at)
+
+    def receipt_in_range(lot):
+        if not from_date and not to_date:
+            return True
+
+        d = receipt_date(lot)
+
+        if from_date and d < from_date:
+            return False
+        if to_date and d > to_date:
+            return False
+        return True
+
     for lot, real_code, is_today in lot_rows:
+
+        # from_date / to_date: only stock that came in within the range
+        # (stock, variants and today_stock are all limited to those lots).
+        if not receipt_in_range(lot):
+            continue
 
         lot_qty = decimal_value(lot.qty)
 
