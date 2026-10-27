@@ -7892,7 +7892,6 @@ def get_balance_stock2(request):
 
 
 
-
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -8355,20 +8354,29 @@ def get_balance_stock(request):
     if to_date:
         invoice_qs = invoice_qs.filter(date__lte=to_date)
 
-    invoice_rows = (
-        invoice_qs
-        .values("part_no")
-        .annotate(total_inv_qty=Sum("inv_qty"))
-    )
-
+    # Quantity, description and item_size are collected from the SAME invoice
+    # rows, so description / item_size always belong to what is in inv_qty.
     invoice_qty_map = {}
+    invoice_desc_map = {}
+    invoice_size_map = {}
 
-    for row in invoice_rows:
+    for row in invoice_qs.values("part_no", "description", "item_size", "inv_qty"):
+
         key = (row["part_no"] or "").strip().upper()
+
         invoice_qty_map[key] = (
             invoice_qty_map.get(key, Decimal("0"))
-            + decimal_value(row["total_inv_qty"])
+            + decimal_value(row["inv_qty"])
         )
+
+        for value, target in (
+            (row["description"], invoice_desc_map),
+            (row["item_size"], invoice_size_map),
+        ):
+            value = (value or "").strip()
+
+            if value and value not in target.setdefault(key, []):
+                target[key].append(value)
 
     # RM -> set of FG part_no (BOM first operation only, NOT date filtered)
     rm_to_fg = {}
@@ -8395,16 +8403,32 @@ def get_balance_stock(request):
 
         total = invoice_qty_map.get(code, Decimal("0"))
 
+        part_keys = [code]
+
         if code.startswith("RM"):
 
             fg_set = set()
             fg_set |= rm_to_fg.get(code, set())
             fg_set |= rm_to_fg.get("RM" + code, set())
 
-            for fg_part_no in fg_set:
+            for fg_part_no in sorted(fg_set):
                 total += invoice_qty_map.get(fg_part_no, Decimal("0"))
+                part_keys.append(fg_part_no)
+
+        descriptions = []
+        sizes = []
+
+        for part_key in part_keys:
+            for value in invoice_desc_map.get(part_key, []):
+                if value not in descriptions:
+                    descriptions.append(value)
+            for value in invoice_size_map.get(part_key, []):
+                if value not in sizes:
+                    sizes.append(value)
 
         item_data["inv_qty"] = total
+        item_data["inv_description"] = ", ".join(descriptions)
+        item_data["inv_item_size"] = ", ".join(sizes)
 
     # =========================================================
     # STEP 6.2
@@ -8530,6 +8554,8 @@ def get_balance_stock(request):
             "wire_rod": float(wire_total),
             "ShopFloor": float(item_data["ShopFloor"]),
             "inv_qty": float(item_data["inv_qty"]),
+            "inv_description": item_data.get("inv_description", ""),
+            "inv_item_size": item_data.get("inv_item_size", ""),
             "rework_qty": float(item_data["rework_qty"]),
             "reject_qty": float(item_data["reject_qty"]),
             "variants": variants,
