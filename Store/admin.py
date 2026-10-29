@@ -31,6 +31,9 @@ admin.site.register(InwardChallanGSTDetails)
 admin.site.register(JobworkInwardChallan)
 admin.site.register(JobworkInwardChallanTable)
 admin.site.register(DeliveryChallanItem)
+admin.site.register(RMStock)
+admin.site.register(RMStockLot)
+admin.site.register(RMStockTransaction)
 
 
 
