@@ -37,6 +37,7 @@ admin.site.register(RMStockTransaction)
 
 
 
+
 @admin.register(FGMovement)
 class FGMovementAdmin(admin.ModelAdmin):
     list_display = [
