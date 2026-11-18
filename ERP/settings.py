@@ -61,6 +61,8 @@ INSTALLED_APPS = [
     'Planning',
     'Account',
     'Maintenance',
+    'chatbot',
+    
     
     
    

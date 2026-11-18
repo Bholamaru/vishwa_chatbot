@@ -32,5 +32,6 @@ urlpatterns = [
     path('Planning/',include('Planning.urls')),
     path('Account/',include('Account.urls')),
     path('Maintenance/',include('Maintenance.urls')),
+    path('chatbot/',include('chatbot.urls')),
    
 ]+static(settings.MEDIA_URL,document_root=settings.MEDIA_ROOT)
