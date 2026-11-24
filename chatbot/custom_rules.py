@@ -127,4 +127,5 @@ RULES = [
     (r"\b(low stock|below (?:the )?(?:min|minimum|reorder|re-order)|shortage|reorder)\b", low_stock),
     (r"\b(?:fg|finished goods?|wip|consumable|subcon(?:tract)?)\s+stock\b|\bopening stock\b", not_ready_stock),
     (r"\bstock\b", rm_stock),
+     
 ]

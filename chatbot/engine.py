@@ -46,6 +46,7 @@ MAX_COLS = 10
 # short names users may type -> model CLASS name.  Add your own.
 # friendly name -> "AppLabel.ModelName".  STARTER LIST - please confirm each one.
 EXTRA_ALIASES = {
+     "party": "All_Masters.Item",
      "purchase order": "Purchase.PurchasePO",
         "indent": "Purchase.Indent",
     
@@ -138,41 +139,7 @@ def can_view(user, model):
     want = APP_MODULE.get(model._meta.app_label)
     return bool(want) and want.lower() in _modules(user)
 
-def detect_item_type(question):
-    Item = apps.get_model("All_Masters", "Item")
 
-    available_types = (
-        Item.objects.order_by()
-        .values_list("type", flat=True)
-        .distinct()
-    )
-
-    normalized_question = re.sub(
-        r"[^a-z0-9]+", " ", question.lower()
-    ).strip()
-
-    for item_type in available_types:
-        if not item_type:
-            continue
-
-        normalized_type = re.sub(
-            r"[^a-z0-9]+", " ", item_type.lower()
-        ).strip()
-
-        if not normalized_type:
-            continue
-
-        pattern = (
-            r"\b" +
-            r"\s+".join(re.escape(word)
-                        for word in normalized_type.split()) +
-            r"s?\b"
-        )
-
-        if re.search(pattern, normalized_question):
-            return item_type
-
-    return None
 def scope_queryset(user, model, qs):
     """
     Row-level scope hook (multi-company / branch / tenant ERPs).
@@ -380,12 +347,23 @@ class ChatbotEngine:
     # ---------------------------------------------------------- public API
     def answer(self, question, user):
         try:
-            return self._answer(question, user)
+            from . import understand
+            try:
+                res = understand.answer_free(self, question, user)
+            except ValueError:
+                raise
+            except Exception:
+                import logging
+                logging.getLogger("chatbot").exception("understand failed: %r", question)
+                res = None
+            if res is not None:
+                return res
+            return self._answer(understand.normalize(question), user)
         except ValueError as e:
             return {"ok": False, "type": "text", "message": str(e)}
 
     # -------------------------------------------------------------- inner
-    def _answer(self, question, user):
+    def _answer(self, question, user, columns=None):
         low = question.strip().lower()
         if not low or low in {"help", "hi", "hello", "hey"} or \
                 re.search(r"\bwhat can you do\b|\bexamples?\b", low):
@@ -445,15 +423,13 @@ class ChatbotEngine:
 
         qs = scope_queryset(user, model, model._default_manager.all())
 
-    #    add
         # ---- supplier / customer type filter
         if model._meta.label == "All_Masters.Item":
-
             if re.search(r"\bsuppliers?\b", low):
                 qs = qs.filter(type__iexact="Supplier")
-
             elif re.search(r"\bcustomers?\b", low):
                 qs = qs.filter(type__iexact="Customer")
+
         pyfilters = []  # conditions on text columns that hold numbers/dates
         # ---- conditions: <field> <op> <value> | <field> between a and b
         for mt in mentions:
@@ -630,6 +606,10 @@ class ChatbotEngine:
             qs = qs.order_by("pk")
         cols = [f.attname for f in model._meta.concrete_fields
                 if not _is_sensitive(f.name)][:MAX_COLS]
+        if columns:
+            want = [f.attname for f in model._meta.concrete_fields
+                    if f.name in columns and not _is_sensitive(f.name)]
+            cols = want or cols
         total = qs.count()
         if py_order:
             of, desc = py_order
